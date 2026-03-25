@@ -1330,6 +1330,10 @@ export class ProviderPoolManager {
             provider.config.lastErrorTime = new Date().toISOString();
             // 更新 lastUsed 时间，避免因 LRU 策略导致失败节点被重复选中
             provider.config.lastUsed = new Date().toISOString();
+            
+            // 只要报错，就清除刷新标记，由下次触发或健康检查决定是否需要刷新
+            provider.config.needsRefresh = false;
+            provider.config.refreshCount = 0;
 
             // 保存错误信息
             if (errorMessage) {
@@ -1368,6 +1372,8 @@ export class ProviderPoolManager {
         if (provider) {
             const wasHealthy = provider.config.isHealthy;
             provider.config.isHealthy = false;
+            provider.config.needsRefresh = false; // 报错时不健康，清除刷新标记，防止卡死
+            provider.config.refreshCount = 0;
             provider.config.errorCount = this.maxErrorCount; // Set to max to indicate definitive failure
             provider.config.lastErrorTime = new Date().toISOString();
             provider.config.lastUsed = new Date().toISOString();
@@ -1404,6 +1410,8 @@ export class ProviderPoolManager {
         const provider = this._findProvider(providerType, providerConfig.uuid);
         if (provider) {
             provider.config.isHealthy = false;
+            provider.config.needsRefresh = false; // 报错时不健康，清除刷新标记，防止卡死
+            provider.config.refreshCount = 0;
             provider.config.errorCount = this.maxErrorCount; // Set to max to indicate definitive failure
             provider.config.lastErrorTime = new Date().toISOString();
             provider.config.lastUsed = new Date().toISOString();
