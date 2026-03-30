@@ -1046,10 +1046,34 @@ export class ClaudeConverter extends BaseConverter {
         // 处理工具 - 使用 parametersJsonSchema 格式
         if (Array.isArray(claudeRequest.tools) && claudeRequest.tools.length > 0) {
             const functionDeclarations = [];
+            let googleSearchTool = null;
+            let urlContextTool = null;
+            let googleMapsTool = null;
             
             claudeRequest.tools.forEach(tool => {
-                if (!tool || typeof tool !== 'object' || !tool.name) {
+                if (!tool || typeof tool !== 'object') {
                     logger.warn("Skipping invalid tool declaration in claudeRequest.tools.");
+                    return;
+                }
+
+                // 处理 google_search 扩展
+                if (tool.google_search) {
+                    googleSearchTool = tool.google_search;
+                }
+
+                // 处理 url_context 扩展
+                if (tool.url_context) {
+                    urlContextTool = tool.url_context;
+                }
+
+                // 处理 google_maps 扩展
+                if (tool.googleMaps) {
+                    googleMapsTool = tool.googleMaps;
+                }
+
+                // 如果没有名称且不是上述扩展，则跳过函数处理
+                if (!tool.name) {
+                    logger.warn("Skipping unnamed tool declaration in claudeRequest.tools.");
                     return;
                 }
 
@@ -1077,10 +1101,20 @@ export class ClaudeConverter extends BaseConverter {
                 functionDeclarations.push(funcDecl);
             });
             
-            if (functionDeclarations.length > 0) {
-                geminiRequest.tools = [{
-                    functionDeclarations: functionDeclarations
-                }];
+            if (functionDeclarations.length > 0 || googleSearchTool || urlContextTool || googleMapsTool) {
+                geminiRequest.tools = [];
+                if (functionDeclarations.length > 0) {
+                    geminiRequest.tools.push({ functionDeclarations });
+                }
+                if (googleSearchTool) {
+                    geminiRequest.tools.push({ googleSearch: googleSearchTool });
+                }
+                if (urlContextTool) {
+                    geminiRequest.tools.push({ urlContext: urlContextTool });
+                }
+                if (googleMapsTool) {
+                    geminiRequest.tools.push({ googleMaps: googleMapsTool });
+                }
             }
         }
 

@@ -1101,6 +1101,8 @@ export class OpenAIConverter extends BaseConverter {
         if (openaiRequest.tools?.length) {
             const functionDeclarations = [];
             let hasGoogleSearch = false;
+            let hasUrlContext = false;
+            let hasGoogleMaps = false;
             
             for (const t of openaiRequest.tools) {
                 if (!t || typeof t !== 'object') continue;
@@ -1135,16 +1137,34 @@ export class OpenAIConverter extends BaseConverter {
                 if (t.google_search) {
                     hasGoogleSearch = true;
                 }
+                
+                // 处理 url_context 工具
+                if (t.url_context) {
+                    hasUrlContext = true;
+                }
+
+                // 处理 google_maps 工具
+                if (t.google_maps) {
+                    hasGoogleMaps = true;
+                }
             }
             
-            if (functionDeclarations.length > 0 || hasGoogleSearch) {
-                geminiRequest.tools = [{}];
+            if (functionDeclarations.length > 0 || hasGoogleSearch || hasUrlContext || hasGoogleMaps) {
+                geminiRequest.tools = [];
                 if (functionDeclarations.length > 0) {
-                    geminiRequest.tools[0].functionDeclarations = functionDeclarations;
+                    geminiRequest.tools.push({ functionDeclarations });
                 }
                 if (hasGoogleSearch) {
                     const googleSearchTool = openaiRequest.tools.find(t => t.google_search);
-                    geminiRequest.tools[0].googleSearch = googleSearchTool.google_search;
+                    geminiRequest.tools.push({ googleSearch: googleSearchTool.google_search });
+                }
+                if (hasUrlContext) {
+                    const urlContextTool = openaiRequest.tools.find(t => t.url_context);
+                    geminiRequest.tools.push({ urlContext: urlContextTool.url_context });
+                }
+                if (hasGoogleMaps) {
+                    const googleMapsTool = openaiRequest.tools.find(t => t.google_maps);
+                    geminiRequest.tools.push({ googleMaps: googleMapsTool.google_maps });
                 }
             }
         }
