@@ -17,7 +17,7 @@ import path from 'path';
 const PLUGINS_CONFIG_FILE = path.join(process.cwd(), 'configs', 'plugins.json');
 
 // 默认禁用的插件列表
-const DEFAULT_DISABLED_PLUGINS = ['api-potluck', 'ai-monitor'];
+const DEFAULT_DISABLED_PLUGINS = ['api-potluck', 'ai-monitor', 'model-usage-stats'];
 
 /**
  * 插件类型常量
@@ -385,9 +385,10 @@ class PluginManager {
      * @param {string} path - 请求路径
      * @param {http.IncomingMessage} req - HTTP 请求
      * @param {http.ServerResponse} res - HTTP 响应
+     * @param {Object} [config] - 当前请求配置
      * @returns {Promise<boolean>} - 是否已处理
      */
-    async executeRoutes(method, path, req, res) {
+    async executeRoutes(method, path, req, res, config) {
         for (const plugin of this.getEnabledPlugins()) {
             if (!Array.isArray(plugin.routes)) continue;
             
@@ -404,7 +405,7 @@ class PluginManager {
                 
                 if (pathMatch) {
                     try {
-                        const handled = await route.handler(method, path, req, res);
+                        const handled = await route.handler(method, path, req, res, config);
                         if (handled) return true;
                     } catch (error) {
                         logger.error(`[PluginManager] Route error in plugin "${plugin.name}":`, error.message);
@@ -412,6 +413,35 @@ class PluginManager {
                 }
             }
         }
+
+        for (const plugin of this.plugins.values()) {
+            if (plugin._enabled || !Array.isArray(plugin.routes)) continue;
+
+            for (const route of plugin.routes) {
+                const methodMatch = route.method === '*' || route.method.toUpperCase() === method;
+                if (!methodMatch) continue;
+
+                let pathMatch = false;
+                if (route.path instanceof RegExp) {
+                    pathMatch = route.path.test(path);
+                } else if (typeof route.path === 'string') {
+                    pathMatch = path === route.path || path.startsWith(route.path + '/');
+                }
+
+                if (pathMatch) {
+                    res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: {
+                            message: `插件未启用：${plugin.name}`,
+                            code: 'PLUGIN_DISABLED'
+                        }
+                    }));
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
@@ -421,7 +451,7 @@ class PluginManager {
      */
     getStaticPaths() {
         const paths = [];
-        for (const plugin of this.getEnabledPlugins()) {
+        for (const plugin of this.plugins.values()) {
             if (Array.isArray(plugin.staticPaths)) {
                 paths.push(...plugin.staticPaths);
             }
@@ -437,6 +467,24 @@ class PluginManager {
     isPluginStaticPath(path) {
         const staticPaths = this.getStaticPaths();
         return staticPaths.some(sp => path === sp || path === '/' + sp);
+    }
+
+    /**
+     * 获取静态路径所属插件
+     * @param {string} path - 请求路径
+     * @returns {Plugin|null}
+     */
+    getPluginByStaticPath(path) {
+        for (const plugin of this.plugins.values()) {
+            if (!Array.isArray(plugin.staticPaths)) continue;
+
+            const matched = plugin.staticPaths.some(sp => path === sp || path === '/' + sp);
+            if (matched) {
+                return plugin;
+            }
+        }
+
+        return null;
     }
 
     /**

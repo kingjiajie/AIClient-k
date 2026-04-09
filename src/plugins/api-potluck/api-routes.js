@@ -420,9 +420,17 @@ export async function handlePotluckUserApiRoutes(method, path, req, res) {
                         limit: keyData.dailyLimit,
                         remaining: Math.max(0, keyData.dailyLimit - keyData.todayUsage),
                         percent: usagePercent,
-                        resetDate: keyData.lastResetDate
+                        resetDate: keyData.lastResetDate,
+                        promptTokens: keyData.todayPromptTokens || 0,
+                        completionTokens: keyData.todayCompletionTokens || 0,
+                        totalTokens: keyData.todayTotalTokens || 0
                     },
                     total: keyData.totalUsage,
+                    tokens: {
+                        prompt: keyData.totalPromptTokens || 0,
+                        completion: keyData.totalCompletionTokens || 0,
+                        total: keyData.totalTokens || 0
+                    },
                     lastUsedAt: keyData.lastUsedAt,
                     createdAt: keyData.createdAt,
                     usageHistory: keyData.usageHistory || {},

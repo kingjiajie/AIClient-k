@@ -7,6 +7,10 @@
     "default-auth": {
       "enabled": true,
       "description": "默认 API Key 认证插件（内置）"
+    },
+    "model-usage-stats": {
+      "enabled": false,
+      "description": "模型用量统计插件"
     }
   }
 }

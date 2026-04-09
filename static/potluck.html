@@ -612,6 +612,14 @@
                 <div class="label">累计调用</div>
                 <div class="value" id="totalUsage">0</div>
             </div>
+            <div class="stat-card green">
+                <div class="label">今日总 Tokens</div>
+                <div class="value" id="todayTokens">0</div>
+            </div>
+            <div class="stat-card pink">
+                <div class="label">累计 Tokens</div>
+                <div class="value" id="totalTokens">0</div>
+            </div>
         </div>
 
         <!-- 使用分布统计区域 -->
@@ -786,6 +794,9 @@
         const API_BASE = '/api/potluck';
 
         function getToken() { return localStorage.getItem('authToken'); }
+        function formatNumber(num) { return new Intl.NumberFormat('zh-CN').format(Number(num || 0)); }
+        function usageCount(entry) { return typeof entry === 'number' ? entry : Number(entry?.requestCount || 0); }
+        function usageTokens(entry) { return typeof entry === 'number' ? 0 : Number(entry?.totalTokens || 0); }
 
         async function apiRequest(url, options = {}) {
             const token = getToken();
@@ -805,6 +816,8 @@
             document.getElementById('enabledKeys').textContent = stats.enabledKeys;
             document.getElementById('todayUsage').textContent = stats.todayTotalUsage;
             document.getElementById('totalUsage').textContent = stats.totalUsage;
+            document.getElementById('todayTokens').textContent = formatNumber(stats.todayTotalTokens);
+            document.getElementById('totalTokens').textContent = formatNumber(stats.totalTokens);
             
             // 渲染使用历史分布
             renderUsageHistory(stats.usageHistory);
@@ -827,18 +840,20 @@
             const aggregatedProviders = {};
             const aggregatedModels = {};
             let totalCalls = 0;
+            let totalTokens = 0;
 
             // 汇总最近 7 天的数据
             Object.values(usageHistory).forEach(day => {
                 if (day.providers) {
-                    Object.entries(day.providers).forEach(([p, count]) => {
-                        aggregatedProviders[p] = (aggregatedProviders[p] || 0) + count;
-                        totalCalls += count;
+                    Object.entries(day.providers).forEach(([p, usage]) => {
+                        aggregatedProviders[p] = (aggregatedProviders[p] || 0) + usageCount(usage);
+                        totalCalls += usageCount(usage);
+                        totalTokens += usageTokens(usage);
                     });
                 }
                 if (day.models) {
-                    Object.entries(day.models).forEach(([m, count]) => {
-                        aggregatedModels[m] = (aggregatedModels[m] || 0) + count;
+                    Object.entries(day.models).forEach(([m, usage]) => {
+                        aggregatedModels[m] = (aggregatedModels[m] || 0) + usageCount(usage);
                     });
                 }
             });
@@ -850,11 +865,11 @@
 
             // 渲染提供商分布
             renderDistribution('providerDistribution', aggregatedProviders, totalCalls);
-            document.getElementById('providerTotalCount').textContent = `${totalCalls} 次`;
+            document.getElementById('providerTotalCount').textContent = `${formatNumber(totalCalls)} 次 / ${formatNumber(totalTokens)} Tokens`;
 
             // 渲染模型分布 (模型总数与提供商总数一致)
             renderDistribution('modelDistribution', aggregatedModels, totalCalls);
-            document.getElementById('modelTotalCount').textContent = `${totalCalls} 次`;
+            document.getElementById('modelTotalCount').textContent = `${formatNumber(totalCalls)} 次`;
         }
 
         function renderDistribution(elementId, data, total) {
@@ -870,7 +885,7 @@
                     <div class="distribution-item">
                         <div class="dist-info">
                             <span class="dist-name">${escapeHtml(name)}</span>
-                            <span class="dist-count">${count} 次 (${percent}%)</span>
+                            <span class="dist-count">${formatNumber(count)} 次 (${percent}%)</span>
                         </div>
                         <div class="dist-bar">
                             <div class="dist-fill" style="width: ${percent}%"></div>
@@ -886,7 +901,7 @@
                     <div class="distribution-item">
                         <div class="dist-info">
                             <span class="dist-name" style="font-style: italic;">其他 (${sorted.length - 6} 个)</span>
-                            <span class="dist-count">${otherCount} 次 (${otherPercent}%)</span>
+                            <span class="dist-count">${formatNumber(otherCount)} 次 (${otherPercent}%)</span>
                         </div>
                         <div class="dist-bar">
                             <div class="dist-fill" style="width: ${otherPercent}%; background: #94a3b8;"></div>
@@ -985,8 +1000,8 @@
                 if (key.usageHistory) {
                     Object.values(key.usageHistory).forEach(day => {
                         if (day.providers) {
-                            Object.entries(day.providers).forEach(([p, count]) => {
-                                providers[p] = (providers[p] || 0) + count;
+                            Object.entries(day.providers).forEach(([p, usage]) => {
+                                providers[p] = (providers[p] || 0) + usageCount(usage);
                             });
                         }
                     });
@@ -996,7 +1011,7 @@
                     .slice(0, 3);
                 
                 const providerBadges = topProviders.map(([name, count]) => 
-                    `<span class="dist-badge">${escapeHtml(name)}: <b>${count}</b></span>`
+                    `<span class="dist-badge">${escapeHtml(name)}: <b>${formatNumber(count)}</b></span>`
                 ).join('');
 
                 return `<div class="key-card ${key.enabled ? '' : 'disabled'}">
@@ -1010,11 +1025,13 @@
                         <div class="key-stat">
                             <div class="label">今日/限额</div>
                             <div class="value ${valueClass}">${key.todayUsage}/${key.dailyLimit}</div>
+                            <div class="value muted">${formatNumber(key.todayTotalTokens || 0)} Tokens</div>
                             <div class="progress-bar"><div class="fill ${progressClass}" style="width:${Math.min(usagePercent, 100)}%"></div></div>
                         </div>
                         <div class="key-stat">
                             <div class="label">累计</div>
                             <div class="value">${key.totalUsage}</div>
+                            <div class="value muted">${formatNumber(key.totalTokens || 0)} Tokens</div>
                         </div>
                         <div class="key-stat">
                             <div class="label">最后调用</div>

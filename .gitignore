@@ -13,7 +13,6 @@ usage-cache.json
 *-auth-token.json
 api-potluck-keys.json
 api-potluck-data.json
-# Codex credentials
-configs/codex/
+model-usage-stats.json
 AGENTS.md
 

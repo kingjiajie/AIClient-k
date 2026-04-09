@@ -389,6 +389,10 @@
         
         <!-- 统计卡片 -->
         <div class="stats-grid">
+            <div class="stat-card orange">
+                <div class="label">最后使用</div>
+                <div class="value" id="statLastUsed">从未</div>
+            </div>
             <div class="stat-card purple">
                 <div class="label">每日用量</div>
                 <div class="value">
@@ -406,9 +410,13 @@
                 <div class="label">累计调用</div>
                 <div class="value" id="statTotal">0</div>
             </div>
-            <div class="stat-card orange">
-                <div class="label">最后使用</div>
-                <div class="value" id="statLastUsed">从未</div>
+            <div class="stat-card green">
+                <div class="label">今日 Tokens</div>
+                <div class="value" id="statTodayTokens">0</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="label">累计 Tokens</div>
+                <div class="value" id="statTotalTokens">0</div>
             </div>
         </div>
 
@@ -466,6 +474,9 @@
         const API_BASE = '/api/potluckuser';
         let currentApiKey = '';
         let isLoggedIn = false;
+        const formatNumber = (num) => new Intl.NumberFormat('zh-CN').format(Number(num || 0));
+        const usageCount = (entry) => typeof entry === 'number' ? entry : Number(entry?.requestCount || 0);
+        const usageTokens = (entry) => typeof entry === 'number' ? 0 : Number(entry?.totalTokens || 0);
         
         // 初始化主题
         function setupTheme() {
@@ -564,6 +575,10 @@
             
             // 累计调用
             document.getElementById('statTotal').textContent = data.total || 0;
+
+            // Token 用量
+            document.getElementById('statTodayTokens').textContent = formatNumber(data.usage?.totalTokens || 0);
+            document.getElementById('statTotalTokens').textContent = formatNumber(data.tokens?.total || 0);
             
             // 最后使用时间
             if (data.lastUsedAt) {
@@ -594,18 +609,20 @@
             const aggregatedProviders = {};
             const aggregatedModels = {};
             let totalCalls = 0;
+            let totalTokens = 0;
 
             // 汇总最近 7 天的数据
             Object.values(usageHistory).forEach(day => {
                 if (day.providers) {
-                    Object.entries(day.providers).forEach(([p, count]) => {
-                        aggregatedProviders[p] = (aggregatedProviders[p] || 0) + count;
-                        totalCalls += count;
+                    Object.entries(day.providers).forEach(([p, usage]) => {
+                        aggregatedProviders[p] = (aggregatedProviders[p] || 0) + usageCount(usage);
+                        totalCalls += usageCount(usage);
+                        totalTokens += usageTokens(usage);
                     });
                 }
                 if (day.models) {
-                    Object.entries(day.models).forEach(([m, count]) => {
-                        aggregatedModels[m] = (aggregatedModels[m] || 0) + count;
+                    Object.entries(day.models).forEach(([m, usage]) => {
+                        aggregatedModels[m] = (aggregatedModels[m] || 0) + usageCount(usage);
                     });
                 }
             });
@@ -617,11 +634,11 @@
 
             // 渲染提供商分布
             renderDistribution('providerDistribution', aggregatedProviders, totalCalls);
-            document.getElementById('providerTotalCount').textContent = `${totalCalls} 次`;
+            document.getElementById('providerTotalCount').textContent = `${formatNumber(totalCalls)} 次 / ${formatNumber(totalTokens)} Tokens`;
 
             // 渲染模型分布
             renderDistribution('modelDistribution', aggregatedModels, totalCalls);
-            document.getElementById('modelTotalCount').textContent = `${totalCalls} 次`;
+            document.getElementById('modelTotalCount').textContent = `${formatNumber(totalCalls)} 次`;
         }
 
         function renderDistribution(elementId, data, total) {
@@ -637,7 +654,7 @@
                     <div class="distribution-item">
                         <div class="dist-info">
                             <span class="dist-name">${escapeHtml(name)}</span>
-                            <span class="dist-count">${count} 次 (${percent}%)</span>
+                            <span class="dist-count">${formatNumber(count)} 次 (${percent}%)</span>
                         </div>
                         <div class="dist-bar">
                             <div class="dist-fill" style="width: ${percent}%"></div>
@@ -653,7 +670,7 @@
                     <div class="distribution-item">
                         <div class="dist-info">
                             <span class="dist-name" style="font-style: italic;">其他</span>
-                            <span class="dist-count">${otherCount} 次 (${otherPercent}%)</span>
+                            <span class="dist-count">${formatNumber(otherCount)} 次 (${otherPercent}%)</span>
                         </div>
                         <div class="dist-bar">
                             <div class="dist-fill" style="width: ${otherPercent}%; background: #94a3b8;"></div>

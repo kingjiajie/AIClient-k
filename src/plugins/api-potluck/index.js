@@ -34,6 +34,61 @@ import logger from '../../utils/logger.js';
 
 import { handlePotluckApiRoutes, handlePotluckUserApiRoutes } from './api-routes.js';
 
+const pendingUsage = new Map();
+
+function toNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeUsageCandidate(candidate) {
+    if (!candidate || typeof candidate !== 'object') {
+        return null;
+    }
+
+    const usage = candidate.usage || candidate.message?.usage || candidate.usageMetadata || candidate.response?.usage || null;
+    const promptTokens = toNumber(
+        candidate.prompt_tokens ??
+        usage?.prompt_tokens ??
+        usage?.input_tokens ??
+        usage?.promptTokenCount
+    );
+    const completionTokens = toNumber(
+        candidate.completion_tokens ??
+        usage?.completion_tokens ??
+        usage?.output_tokens ??
+        usage?.candidatesTokenCount
+    );
+    const totalTokens = toNumber(
+        candidate.total_tokens ??
+        usage?.total_tokens ??
+        usage?.totalTokenCount
+    ) || promptTokens + completionTokens;
+
+    return {
+        promptTokens,
+        completionTokens,
+        totalTokens
+    };
+}
+
+function mergeUsage(baseUsage, nextUsage) {
+    if (!nextUsage) return baseUsage;
+    return {
+        promptTokens: Math.max(baseUsage.promptTokens, nextUsage.promptTokens),
+        completionTokens: Math.max(baseUsage.completionTokens, nextUsage.completionTokens),
+        totalTokens: Math.max(baseUsage.totalTokens, nextUsage.totalTokens)
+    };
+}
+
+function extractUsage(...candidates) {
+    return candidates.reduce((usage, candidate) => mergeUsage(usage, normalizeUsageCandidate(candidate)), {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0
+    });
+}
+
 /**
  * 插件定义
  */
@@ -146,23 +201,50 @@ const apiPotluckPlugin = {
      * 钩子函数
      */
     hooks: {
+        async onUnaryResponse({ requestId, nativeResponse, clientResponse }) {
+            if (!requestId) return;
+            pendingUsage.set(requestId, mergeUsage(
+                pendingUsage.get(requestId) || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                extractUsage(nativeResponse, clientResponse)
+            ));
+        },
+
+        async onStreamChunk({ requestId, nativeChunk, chunkToSend }) {
+            if (!requestId) return;
+            pendingUsage.set(requestId, mergeUsage(
+                pendingUsage.get(requestId) || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                extractUsage(nativeChunk, chunkToSend)
+            ));
+        },
+
         /**
          * 内容生成后钩子 - 记录用量
          * @param {Object} hookContext - 钩子上下文，包含请求和模型信息
          */
         async onContentGenerated(hookContext) {
+            const requestId = hookContext._pluginRequestId || hookContext._monitorRequestId;
+
             if (hookContext.potluckApiKey) {
                 try {
+                    const usage = requestId
+                        ? (pendingUsage.get(requestId) || { promptTokens: 0, completionTokens: 0, totalTokens: 0 })
+                        : { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
                     // 传入提供商和模型信息
                     await incrementUsage(
                         hookContext.potluckApiKey, 
                         hookContext.toProvider, 
-                        hookContext.model
+                        hookContext.model,
+                        usage
                     );
                 } catch (e) {
                     // 静默失败，不影响主流程
                     logger.error('[API Potluck Plugin] Failed to record usage:', e.message);
                 }
+            }
+
+            if (requestId) {
+                pendingUsage.delete(requestId);
             }
         }
 

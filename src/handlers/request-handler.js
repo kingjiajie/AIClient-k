@@ -54,6 +54,7 @@ export function createRequestHandler(config, providerPoolManager) {
         return logger.runWithContext(requestId, async () => {
             // Deep copy the config for each request to allow dynamic modification
             const currentConfig = deepmerge({}, config);
+            currentConfig._pluginRequestId = requestId;
             
             // 计算当前请求的基础 URL
             const protocol = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
@@ -82,13 +83,25 @@ export function createRequestHandler(config, providerPoolManager) {
                 // 检查是否是插件静态文件
                 const pluginManager = getPluginManager();
                 const isPluginStatic = pluginManager.isPluginStaticPath(path);
+                const pluginStaticOwner = isPluginStatic ? pluginManager.getPluginByStaticPath(path) : null;
+                if (pluginStaticOwner && !pluginStaticOwner._enabled) {
+                    res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: {
+                            message: `插件未启用：${pluginStaticOwner.name}`,
+                            code: 'PLUGIN_DISABLED'
+                        }
+                    }));
+                    return;
+                }
                 if (path.startsWith('/static/') || path === '/' || path === '/favicon.ico' || path === '/index.html' || path.startsWith('/app/') || path.startsWith('/components/') || path === '/login.html' || isPluginStatic) {
                     const served = await serveStaticFiles(path, res);
                     if (served) return;
                 }
 
                 // 执行插件路由
-                const pluginRouteHandled = await pluginManager.executeRoutes(method, path, req, res);
+                const pluginRouteHandled = await pluginManager.executeRoutes(method, path, req, res, currentConfig);
                 if (pluginRouteHandled) return;
 
                 const uiHandled = await handleUIApiRequests(method, path, req, res, currentConfig, providerPoolManager);

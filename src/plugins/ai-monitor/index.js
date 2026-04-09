@@ -41,37 +41,38 @@ const aiMonitorPlugin = {
          * 请求转换后的钩子
          */
         async onContentGenerated(config) {
-            const { originalRequestBody, processedRequestBody, fromProvider, toProvider, model, _monitorRequestId, isStream } = config;
+            const { originalRequestBody, processedRequestBody, fromProvider, toProvider, model, _monitorRequestId, _pluginRequestId, isStream } = config;
             if (!originalRequestBody) return;
+            const traceRequestId = _pluginRequestId || _monitorRequestId;
 
             setImmediate(() => {
                 const hasConversion = JSON.stringify(originalRequestBody) !== JSON.stringify(processedRequestBody);
-                logger.info(`[AI Monitor][${_monitorRequestId}] >>> Req Protocol: ${fromProvider}${hasConversion ? ' -> ' + toProvider : ''} | Model: ${model}`);
+                logger.info(`[AI Monitor][${traceRequestId}] >>> Req Protocol: ${fromProvider}${hasConversion ? ' -> ' + toProvider : ''} | Model: ${model}`);
                 
                 if (hasConversion) {
-                    logger.info(`[AI Monitor][${_monitorRequestId}] [Req Original]: ${JSON.stringify(originalRequestBody)}`);
-                    logger.info(`[AI Monitor][${_monitorRequestId}] [Req Processed]: ${JSON.stringify(processedRequestBody)}`);
+                    logger.info(`[AI Monitor][${traceRequestId}] [Req Original]: ${JSON.stringify(originalRequestBody)}`);
+                    logger.info(`[AI Monitor][${traceRequestId}] [Req Processed]: ${JSON.stringify(processedRequestBody)}`);
                 } else {
-                    logger.info(`[AI Monitor][${_monitorRequestId}] [Req]: ${JSON.stringify(originalRequestBody)}`);
+                    logger.info(`[AI Monitor][${traceRequestId}] [Req]: ${JSON.stringify(originalRequestBody)}`);
                 }
             });
 
             // 处理流式响应的聚合输出
-            if (isStream && _monitorRequestId) {
+            if (isStream && traceRequestId) {
                 setTimeout(() => {
-                    const cache = aiMonitorPlugin.streamCache.get(_monitorRequestId);
+                    const cache = aiMonitorPlugin.streamCache.get(traceRequestId);
                     if (cache) {
                         const hasConversion = JSON.stringify(cache.nativeChunks) !== JSON.stringify(cache.convertedChunks);
-                        logger.info(`[AI Monitor][${_monitorRequestId}] <<< Stream Response Aggregated: ${hasConversion ? cache.toProvider + ' -> ' : ''}${cache.fromProvider}`);
+                        logger.info(`[AI Monitor][${traceRequestId}] <<< Stream Response Aggregated: ${hasConversion ? cache.toProvider + ' -> ' : ''}${cache.fromProvider}`);
                         
                         if (hasConversion) {
-                            logger.info(`[AI Monitor][${_monitorRequestId}] [Res Native Full]: ${JSON.stringify(cache.nativeChunks)}`);
-                            logger.info(`[AI Monitor][${_monitorRequestId}] [Res Converted Full]: ${JSON.stringify(cache.convertedChunks)}`);
+                            logger.info(`[AI Monitor][${traceRequestId}] [Res Native Full]: ${JSON.stringify(cache.nativeChunks)}`);
+                            logger.info(`[AI Monitor][${traceRequestId}] [Res Converted Full]: ${JSON.stringify(cache.convertedChunks)}`);
                         } else {
-                            logger.info(`[AI Monitor][${_monitorRequestId}] [Res Full]: ${JSON.stringify(cache.nativeChunks)}`);
+                            logger.info(`[AI Monitor][${traceRequestId}] [Res Full]: ${JSON.stringify(cache.nativeChunks)}`);
                         }
                         
-                        aiMonitorPlugin.streamCache.delete(_monitorRequestId);
+                        aiMonitorPlugin.streamCache.delete(traceRequestId);
                     }
                 }, 2000); // 等待流传输完成
             }

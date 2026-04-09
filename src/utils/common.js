@@ -289,6 +289,10 @@ export async function handleUnifiedResponse(res, responsePayload, isStream, stat
     }
 }
 
+function getPluginHookRequestId(config) {
+    return config?._monitorRequestId || config?._pluginRequestId || null;
+}
+
 export async function handleStreamRequest(res, service, model, requestBody, fromProvider, toProvider, PROMPT_LOG_MODE, PROMPT_LOG_FILENAME, providerPoolManager, pooluuid, customName, retryContext = null) {
     let fullResponseText = '';
     let fullResponseJson = '';
@@ -363,7 +367,8 @@ export async function handleStreamRequest(res, service, model, requestBody, from
                 : nativeChunk;
 
             // 监控钩子：流式响应分块
-            if (CONFIG?._monitorRequestId) {
+            const hookRequestId = getPluginHookRequestId(CONFIG);
+            if (hookRequestId) {
                 try {
                     const pluginManager = getPluginManager();
                     await pluginManager.executeHook('onStreamChunk', {
@@ -372,7 +377,7 @@ export async function handleStreamRequest(res, service, model, requestBody, from
                         fromProvider,
                         toProvider,
                         model,
-                        requestId: CONFIG._monitorRequestId
+                        requestId: hookRequestId
                     });
                 } catch (e) {}
             }
@@ -672,7 +677,8 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
         }
 
         // 监控钩子：非流式响应
-        if (CONFIG?._monitorRequestId) {
+        const hookRequestId = getPluginHookRequestId(CONFIG);
+        if (hookRequestId) {
             try {
                 const pluginManager = getPluginManager();
                 await pluginManager.executeHook('onUnaryResponse', {
@@ -681,7 +687,7 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
                     fromProvider,
                     toProvider,
                     model,
-                    requestId: CONFIG._monitorRequestId
+                    requestId: hookRequestId
                 });
             } catch (e) {}
         }
