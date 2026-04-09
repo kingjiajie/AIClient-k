@@ -5,6 +5,7 @@
 
 import { promises as fs } from 'fs';
 import logger from '../../utils/logger.js';
+import { gitPersistence } from '../../core/git-persistence.js';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -175,6 +176,7 @@ function syncWriteToFile() {
             require('fs').mkdirSync(dir, { recursive: true });
         }
         writeFileSync(KEYS_STORE_FILE, JSON.stringify(keyStore, null, 2), 'utf8');
+        gitPersistence.save('Potluck keys updated').catch(err => logger.error('[GitPersistence] Potluck save failed:', err));
     } catch (error) {
         logger.error('[API Potluck] Sync write failed:', error.message);
     }

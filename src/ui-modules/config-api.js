@@ -8,6 +8,7 @@ import { serviceInstances } from '../providers/adapter.js';
 import { initApiService } from '../services/service-manager.js';
 import { getRequestBody } from '../utils/common.js';
 import { broadcastEvent } from '../ui-modules/event-broadcast.js';
+import { gitPersistence } from '../core/git-persistence.js';
 import { HEALTH_CHECK, PASSWORD, NETWORK, RETRY } from '../utils/constants.js';
 
 /**
@@ -328,6 +329,9 @@ export async function handleUpdateConfig(req, res, currentConfig) {
 
             writeFileSync(configPath, JSON.stringify(configToSave, null, 2), 'utf-8');
             logger.info('[UI API] Configuration saved to configs/config.json');
+            
+            // Sync to Git
+            gitPersistence.save('Config updated via UI').catch(err => logger.error('[GitPersistence] UI save failed:', err));
             
             // 广播更新事件
             broadcastEvent('config_update', {

@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { gitPersistence } from '../../core/git-persistence.js';
 import path from 'path';
 import logger from '../../utils/logger.js';
 
@@ -142,6 +143,7 @@ function syncWriteToFile() {
             mkdirSync(dir, { recursive: true });
         }
         writeFileSync(STATS_STORE_FILE, JSON.stringify(statsStore, null, 2), 'utf8');
+        gitPersistence.save('Usage stats updated').catch(err => logger.error('[GitPersistence] Stats save failed:', err));
         logger.info('[Model Usage Stats] Sync persisted stats store');
     } catch (error) {
         logger.error('[Model Usage Stats] Sync write failed:', error.message);

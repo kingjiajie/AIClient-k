@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { CONFIG } from '../core/config-manager.js';
 import { parseProxyUrl } from '../utils/proxy-utils.js';
 import { getRequestBody } from '../utils/common.js';
+import { gitPersistence } from '../core/git-persistence.js';
 
 const execAsync = promisify(exec);
 const GITHUB_REPO = 'justlovemaki/AIClient-2-API';
@@ -384,6 +385,7 @@ export async function performUpdate(targetTag = null) {
     try {
         const newVersion = finalTag.replace(/^v/, '');
         writeFileSync(versionFilePath, newVersion, 'utf-8');
+        gitPersistence.save(`App updated to version ${newVersion}`).catch(err => logger.error('[GitPersistence] Update sync failed:', err));
         logger.info(`[Update] VERSION file updated to ${newVersion}`);
     } catch (error) {
         logger.warn('[Update] Failed to update VERSION file:', error.message);

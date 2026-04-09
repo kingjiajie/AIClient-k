@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import { promises as pfs } from 'fs';
+import * as path from 'path';
 import { INPUT_SYSTEM_PROMPT_FILE } from '../utils/common.js';
 import { MODEL_PROVIDER } from '../utils/constants.js';
 import logger from '../utils/logger.js';
+import { gitPersistence } from './git-persistence.js';
 
 export let CONFIG = {}; // Make CONFIG exportable
 export let PROMPT_LOG_FILENAME = ''; // Make PROMPT_LOG_FILENAME exportable
@@ -55,6 +57,17 @@ function normalizeConfiguredProviders(config) {
  * @returns {Object} The initialized configuration object.
  */
 export async function initializeConfig(args = process.argv.slice(2), configFilePath = 'configs/config.json') {
+    // Ensure essential directories exist
+    ['configs', 'auths', 'logs'].forEach(dir => {
+        const fullPath = path.resolve(process.cwd(), dir);
+        if (!fs.existsSync(fullPath)) {
+            fs.mkdirSync(fullPath, { recursive: true });
+        }
+    });
+
+    // Initialize Git Persistence before loading config if enabled
+    await gitPersistence.initialize();
+
     const defaultConfig = {
         REQUIRED_API_KEY: "123456",
         SERVER_PORT: 3000,

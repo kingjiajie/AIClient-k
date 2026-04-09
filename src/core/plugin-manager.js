@@ -10,6 +10,7 @@
 
 import { promises as fs } from 'fs';
 import logger from '../utils/logger.js';
+import { gitPersistence } from './git-persistence.js';
 import { existsSync } from 'fs';
 import path from 'path';
 
@@ -163,6 +164,8 @@ class PluginManager {
                 await fs.mkdir(dir, { recursive: true });
             }
             await fs.writeFile(PLUGINS_CONFIG_FILE, JSON.stringify(this.pluginsConfig, null, 2), 'utf8');
+            // 同步到 GitHub
+            await gitPersistence.save('Plugin config updated').catch(err => logger.error('[GitPersistence] Plugin save failed:', err));
         } catch (error) {
             logger.error('[PluginManager] Failed to save config:', error.message);
         }

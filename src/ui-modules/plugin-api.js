@@ -2,6 +2,7 @@ import { getPluginManager } from '../core/plugin-manager.js';
 import logger from '../utils/logger.js';
 import { getRequestBody } from '../utils/common.js';
 import { broadcastEvent } from './event-broadcast.js';
+import { gitPersistence } from '../core/git-persistence.js';
 
 /**
  * 获取插件列表
@@ -45,6 +46,9 @@ export async function handleTogglePlugin(req, res, pluginName) {
 
         const pluginManager = getPluginManager();
         await pluginManager.setPluginEnabled(pluginName, enabled);
+
+        // 确保立即同步到 Git (虽然 saveConfig 里已经有了，但这里加一个显式调用更稳)
+        gitPersistence.save(`Plugin ${pluginName} toggled to ${enabled}`).catch(err => logger.error('[GitPersistence] Toggle sync failed:', err));
 
         // 广播更新事件
         broadcastEvent('plugin_update', {
