@@ -10,6 +10,7 @@ import { CONFIG } from '../core/config-manager.js';
 import { parseProxyUrl } from '../utils/proxy-utils.js';
 import { getRequestBody } from '../utils/common.js';
 import { isValidVersionTag } from '../utils/version-tag.js';
+import { gitPersistence } from '../core/git-persistence.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -411,6 +412,7 @@ export async function performUpdate(targetTag = null) {
         await withFileLock(versionFilePath, async () => {
             await atomicWriteFile(versionFilePath, newVersion, 'utf-8');
         });
+        gitPersistence.save(`App updated to version ${newVersion}`).catch(err => logger.error('[GitPersistence] Update sync failed:', err));
         logger.info(`[Update] VERSION file updated to ${newVersion}`);
     } catch (error) {
         logger.warn('[Update] Failed to update VERSION file:', error.message);

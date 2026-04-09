@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { CONFIG } from '../core/config-manager.js';
+import { gitPersistence } from '../core/git-persistence.js';
 import { getClientIp } from '../utils/common.js';
 import { PASSWORD } from '../utils/constants.js';
 
@@ -154,6 +155,7 @@ async function readTokenStore() {
 async function writeTokenStore(tokenStore) {
     try {
         await atomicWriteFile(TOKEN_STORE_FILE, JSON.stringify(tokenStore, null, 2), { encoding: 'utf8', mode: 0o600 });
+        gitPersistence.save('Auth tokens updated').catch(err => logger.error('[GitPersistence] Auth save failed:', err));
     } catch (error) {
         logger.error('[Token Store] Failed to write token store file:', error);
     }

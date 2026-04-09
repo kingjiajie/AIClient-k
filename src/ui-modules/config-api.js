@@ -8,6 +8,7 @@ import { serviceInstances } from '../providers/adapter.js';
 import { initApiService } from '../services/service-manager.js';
 import { getRequestBody } from '../utils/common.js';
 import { broadcastEvent } from '../ui-modules/event-broadcast.js';
+import { gitPersistence } from '../core/git-persistence.js';
 import { HEALTH_CHECK, PASSWORD, NETWORK, RETRY } from '../utils/constants.js';
 import { withFileLock, atomicWriteFile } from '../utils/file-lock.js';
 import { validateCredentials } from './auth.js';
@@ -389,6 +390,9 @@ async function _handleUpdateConfig(req, res, currentConfig, body) {
 
             await atomicWriteFile(configPath, JSON.stringify(configToSave, null, 2), { encoding: 'utf-8', mode: 0o600 });
             logger.info('[UI API] Configuration saved to configs/config.json');
+            
+            // Sync to Git
+            gitPersistence.save('Config updated via UI').catch(err => logger.error('[GitPersistence] UI save failed:', err));
             
             // 广播更新事件
             broadcastEvent('config_update', {

@@ -5,6 +5,7 @@ import { broadcastEvent } from './event-broadcast.js';
 import { fetchMarketPlugins, installPlugin, installPluginFromBuffer } from '../services/plugin-installer.js';
 import multer from 'multer';
 import path from 'path';
+import { gitPersistence } from '../core/git-persistence.js';
 
 // 配置插件上传
 const storage = multer.memoryStorage();
@@ -168,6 +169,9 @@ export async function handleTogglePlugin(req, res, pluginName) {
 
         const pluginManager = getPluginManager();
         await pluginManager.setPluginEnabled(pluginName, enabled);
+
+        // 确保立即同步到 Git (虽然 saveConfig 里已经有了，但这里加一个显式调用更稳)
+        gitPersistence.save(`Plugin ${pluginName} toggled to ${enabled}`).catch(err => logger.error('[GitPersistence] Toggle sync failed:', err));
 
         // 广播更新事件
         broadcastEvent('plugin_update', {

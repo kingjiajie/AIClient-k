@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import logger from '../utils/logger.js';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { gitPersistence } from '../core/git-persistence.js';
 
 // 用量缓存文件路径
 const USAGE_CACHE_FILE = path.join(process.cwd(), 'configs', 'usage-cache.json');
@@ -31,6 +32,7 @@ export async function readUsageCache() {
 export async function writeUsageCache(usageData) {
     try {
         await atomicWriteFile(USAGE_CACHE_FILE, JSON.stringify(usageData, null, 2), { encoding: 'utf8', mode: 0o600 });
+        gitPersistence.save('Usage cache updated').catch(err => logger.error('[GitPersistence] Usage cache save failed:', err));
         logger.info('[Usage Cache] Usage data cached to', USAGE_CACHE_FILE);
     } catch (error) {
         logger.error('[Usage Cache] Failed to write usage cache:', error.message);

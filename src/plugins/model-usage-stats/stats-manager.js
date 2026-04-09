@@ -1,6 +1,7 @@
 import { atomicWriteFile, atomicWriteFileSync } from '../../utils/file-lock.js';
 import { promises as fs } from 'fs';
 import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { gitPersistence } from '../../core/git-persistence.js';
 import path from 'path';
 import logger from '../../utils/logger.js';
 import { RateManager } from '../../utils/rate-tracker.js';
@@ -168,6 +169,7 @@ export function syncWriteToFile() {
         }
         atomicWriteFileSync(STATS_STORE_FILE, JSON.stringify(statsStore, null, 2), { encoding: 'utf8', mode: 0o600 });
         isDirty = false;
+        gitPersistence.save('Usage stats updated').catch(err => logger.error('[GitPersistence] Stats save failed:', err));
         logger.info('[Model Usage Stats] Sync persisted stats store');
     } catch (error) {
         logger.error('[Model Usage Stats] Sync write failed:', error.message);

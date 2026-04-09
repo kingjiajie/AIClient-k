@@ -13,8 +13,8 @@ import { broadcastEvent } from './event-broadcast.js';
 import { getRegisteredProviders, getServiceAdapter, invalidateServiceAdapter, serviceInstances } from '../providers/adapter.js';
 import { withFileLock, atomicWriteFile } from '../utils/file-lock.js';
 import { normalizeProviderConfigFields } from '../utils/provider-config-normalizer.js';
-
-
+import { gitPersistence } from '../core/git-persistence.js';
+import { promises as fsPromises } from 'fs';
 
 // 文件级互斥锁：防止并发读写导致数据丢失
 // 安全净化：移除用户输入字段中的危险内容（script、事件处理器、javascript:协议等），
@@ -513,6 +513,7 @@ async function _handleAddProvider(req, res, currentConfig, providerPoolManager, 
 
         // Save to file
         await atomicWriteFile(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+        gitPersistence.save('Provider status/config updated').catch(err => logger.error('[GitPersistence] Provider status sync failed:', err));
         logger.info(`[UI API] Added new provider to ${providerType}: ${providerConfig.uuid}`);
 
         // Update provider pool manager if available
@@ -706,6 +707,22 @@ async function _handleDeleteProvider(req, res, currentConfig, providerPoolManage
 
         // Save to file
         await atomicWriteFile(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+
+        // 物理删除凭证文件 (如果是 OAuth 类型且包含文件路径)
+        try {
+            const credPath = deletedProvider.credentialFilePath ||
+                             deletedProvider.credsFilePath ||
+                             deletedProvider.tokenFilePath ||
+                             deletedProvider.cookieFilePath;
+            if (credPath && existsSync(credPath)) {
+                fsPromises.unlink(credPath).catch(() => {}); // 异步删除，不阻塞
+                logger.info(`[UI API] Deleted credential file: ${credPath}`);
+            }
+        } catch (e) {}
+
+        // 同步到 Git
+        gitPersistence.save(`Provider ${providerUuid} deleted from ${providerType}`).catch(err => logger.error('[GitPersistence] Delete sync failed:', err));
+
         logger.info(`[UI API] Deleted provider ${providerUuid} from ${providerType}`);
         invalidateServiceAdapter(providerType, providerUuid);
 
@@ -1456,6 +1473,7 @@ export async function handleQuickLinkProvider(req, res, currentConfig, providerP
         if (successCount > 0) {
             await withFileLock(poolsFilePath, async () => {
                 await atomicWriteFile(poolsFilePath, JSON.stringify(providerPools, null, 2), 'utf-8');
+                gitPersistence.save('Provider pools auto-linked via UI').catch(err => logger.error('[GitPersistence] Provider auto-link save failed:', err));
                 return poolsFilePath;
             });
 

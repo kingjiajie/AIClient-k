@@ -6,7 +6,8 @@
 import { atomicWriteFile, atomicWriteFileSync } from '../../utils/file-lock.js';
 import { promises as fs } from 'fs';
 import logger from '../../utils/logger.js';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
+import { gitPersistence } from '../../core/git-persistence.js';
 import path from 'path';
 import crypto from 'crypto';
 import { RateManager } from '../../utils/rate-tracker.js';
@@ -235,6 +236,7 @@ function syncWriteToFile() {
             mkdirSync(dir, { recursive: true });
         }
         atomicWriteFileSync(KEYS_STORE_FILE, JSON.stringify(keyStore, null, 2), { encoding: 'utf8', mode: 0o600 });
+        gitPersistence.save('Potluck keys updated').catch(err => logger.error('[GitPersistence] Potluck save failed:', err));
     } catch (error) {
         logger.error('[API Potluck] Sync write failed:', error.message);
     }
