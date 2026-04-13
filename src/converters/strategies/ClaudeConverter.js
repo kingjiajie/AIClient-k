@@ -315,6 +315,10 @@ export class ClaudeConverter extends BaseConverter {
                     prompt_tokens: claudeResponse.usage?.input_tokens || 0,
                     completion_tokens: claudeResponse.usage?.output_tokens || 0,
                     total_tokens: (claudeResponse.usage?.input_tokens || 0) + (claudeResponse.usage?.output_tokens || 0),
+                    cached_tokens: claudeResponse.usage?.cache_read_input_tokens || 0,
+                    prompt_tokens_details: {
+                        cached_tokens: claudeResponse.usage?.cache_read_input_tokens || 0
+                    }
                 },
             };
         }

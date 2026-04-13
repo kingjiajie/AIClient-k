@@ -414,9 +414,17 @@
                 <div class="label">今日 Tokens</div>
                 <div class="value" id="statTodayTokens">0</div>
             </div>
+            <div class="stat-card cyan">
+                <div class="label">今日缓存 Tokens</div>
+                <div class="value" id="statTodayCachedTokens">0</div>
+            </div>
             <div class="stat-card purple">
                 <div class="label">累计 Tokens</div>
                 <div class="value" id="statTotalTokens">0</div>
+            </div>
+            <div class="stat-card cyan">
+                <div class="label">累计缓存 Tokens</div>
+                <div class="value" id="statTotalCachedTokens">0</div>
             </div>
         </div>
 
@@ -596,7 +604,9 @@
 
             // Token 用量
             document.getElementById('statTodayTokens').textContent = formatTokenCompact(data.usage?.totalTokens || 0);
+            document.getElementById('statTodayCachedTokens').textContent = formatTokenCompact(data.usage?.cachedTokens || 0);
             document.getElementById('statTotalTokens').textContent = formatTokenCompact(data.tokens?.total || 0);
+            document.getElementById('statTotalCachedTokens').textContent = formatTokenCompact(data.tokens?.cached || 0);
             
             // 最后使用时间
             if (data.lastUsedAt) {

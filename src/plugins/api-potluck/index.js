@@ -15,11 +15,13 @@ import {
     deleteKey,
     updateKeyLimit,
     resetKeyUsage,
+    resetKeyTokenStats,
     toggleKey,
     updateKeyName,
     validateKey,
     incrementUsage,
     getStats,
+    resetAllTokenStats,
     KEY_PREFIX,
     setConfigGetter
 } from './key-manager.js';
@@ -47,6 +49,13 @@ function normalizeUsageCandidate(candidate) {
     }
 
     const usage = candidate.usage || candidate.message?.usage || candidate.usageMetadata || candidate.response?.usage || null;
+    const reasoningTokens = toNumber(
+        candidate.completion_tokens_details?.reasoning_tokens ??
+        candidate.output_tokens_details?.reasoning_tokens ??
+        usage?.completion_tokens_details?.reasoning_tokens ??
+        usage?.output_tokens_details?.reasoning_tokens ??
+        usage?.thoughtsTokenCount
+    );
     const promptTokens = toNumber(
         candidate.prompt_tokens ??
         usage?.prompt_tokens ??
@@ -60,17 +69,25 @@ function normalizeUsageCandidate(candidate) {
         usage?.output_tokens ??
         usage?.candidatesTokenCount ??
         usage?.outputTokenCount
-    );
+    ) + reasoningTokens;
     const totalTokens = toNumber(
         candidate.total_tokens ??
         usage?.total_tokens ??
         usage?.totalTokenCount
-    ) || promptTokens + completionTokens;
+    );
+
+    const cachedTokens = toNumber(
+        candidate.cached_tokens ??
+        usage?.cached_tokens ??
+        usage?.cache_read_input_tokens ??
+        usage?.cachedContentTokenCount
+    );
 
     return {
         promptTokens,
         completionTokens,
-        totalTokens
+        totalTokens: totalTokens || (promptTokens + completionTokens),
+        cachedTokens
     };
 }
 
@@ -79,7 +96,8 @@ function mergeUsage(baseUsage, nextUsage) {
     return {
         promptTokens: Math.max(baseUsage.promptTokens, nextUsage.promptTokens),
         completionTokens: Math.max(baseUsage.completionTokens, nextUsage.completionTokens),
-        totalTokens: Math.max(baseUsage.totalTokens, nextUsage.totalTokens)
+        totalTokens: Math.max(baseUsage.totalTokens, nextUsage.totalTokens),
+        cachedTokens: Math.max(baseUsage.cachedTokens || 0, nextUsage.cachedTokens || 0)
     };
 }
 
@@ -87,7 +105,8 @@ function extractUsage(...candidates) {
     return candidates.reduce((usage, candidate) => mergeUsage(usage, normalizeUsageCandidate(candidate)), {
         promptTokens: 0,
         completionTokens: 0,
-        totalTokens: 0
+        totalTokens: 0,
+        cachedTokens: 0
     });
 }
 
@@ -276,11 +295,13 @@ const apiPotluckPlugin = {
         deleteKey,
         updateKeyLimit,
         resetKeyUsage,
+        resetKeyTokenStats,
         toggleKey,
         updateKeyName,
         validateKey,
         incrementUsage,
         getStats,
+        resetAllTokenStats,
         KEY_PREFIX,
         extractPotluckKey,
         isPotluckRequest
@@ -297,11 +318,13 @@ export {
     deleteKey,
     updateKeyLimit,
     resetKeyUsage,
+    resetKeyTokenStats,
     toggleKey,
     updateKeyName,
     validateKey,
     incrementUsage,
     getStats,
+    resetAllTokenStats,
     KEY_PREFIX,
     extractPotluckKey,
     isPotluckRequest
