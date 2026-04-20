@@ -49,22 +49,32 @@
   </tr>
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://www.lingtrue.com/register?aff=MP34">
-        <img src="static/lingtrueapi.png" alt="LingtrueAPI Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      LingtrueAPIによる本プロジェクトへのスポンサーに感謝します！LingtrueAPIは世界的な大規模言語モデルAPI中継プラットフォームであり、Claude opus 4.6、GPT 5.4、Gemini 3.1 proなど各種モデルのAPI呼び出しサービスを提供しています。低コスト、高安定性で世界中のAI機能に接続し、生産性を最大化することを目指しています。LingtrueAPIは本ソフトウェアユーザー向けに特別優遇を提供しています。<a href="https://www.lingtrue.com/register?aff=MP34">このリンクから登録</a>し、初回チャージ時に「<strong>LingtrueAPI</strong>」のクーポンコードを入力すると、<strong>10%オフ</strong>で利用できます。
-    </td>
-  </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
       <a href="https://poixe.com/i/ebmvga">
         <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
       Poixe AI は信頼性の高い LLM API サービスを提供しています。プラットフォームが提供する API エンドポイントを活用して、AI 製品をシームレスに構築できます。また、AI API リソースをプラットフォームに提供するベンダーになり、収益を得ることも可能です。<a href="https://poixe.com/i/ebmvga">AIClient-2-API 専用リンクから登録</a>すると、初回チャージ時に <strong>$5 USD</strong> のボーナスを受け取れます。
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://visioncoder.com">
+        <img src="static/visioncoder.png" alt="VisionCoder Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      VisionCoder による本プロジェクトへのスポンサーに感謝します！VisionCoder 開発プラットフォームは信頼性が高く効率的な API 中継サービスプロバイダーであり、Claude Code、Codex、Gemini などの主要な AI モデルへのアクセスを提供しています。開発者やチームが AI 機能をより簡単に統合し、生産性を向上させるのを支援します。VisionCoder は本ソフトウェアのユーザー向けに期間限定の Token Plan 特典を提供しています：1ヶ月の購入で1ヶ月分を無料で進呈。
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.lingtrue.com/register?aff=MP34">
+        <img src="static/lingtrueapi.png" alt="LingtrueAPI Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      LingtrueAPIによる本プロジェクトへのスポンサーに感謝します！LingtrueAPIは世界的な大規模言語モデルAPI中継プラットフォームであり、Claude opus 4.6、GPT 5.4、Gemini 3.1 proなど各種モデルのAPI呼び出しサービスを提供しています。低コスト、高安定性で世界中のAI功能に接続し、生産性を最大化することを目指しています。LingtrueAPIは本ソフトウェアユーザー向けに特別優遇を提供しています。<a href="https://www.lingtrue.com/register?aff=MP34">このリンクから登録</a>し、初回チャージ時に「<strong>LingtrueAPI</strong>」のクーポンコードを入力すると、<strong>10%オフ</strong>で利用できます。
     </td>
   </tr>
   <tr>

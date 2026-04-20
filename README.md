@@ -49,22 +49,32 @@
   </tr>
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://www.lingtrue.com/register?aff=MP34">
-        <img src="static/lingtrueapi.png" alt="LingtrueAPI Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      Thanks to LingtrueAPI for its sponsorship of this project! LingtrueAPI is a global large-model API intermediary service platform that offers API calling services for various models such as Claude opus 4.6, GPT 5.4, and Gemini 3.1 pro. It is committed to enabling users to connect to global AI capabilities at low cost and with high stability, maximizing production efficiency. LingtrueAPI provides special discounts for users of this software: <a href="https://www.lingtrue.com/register?aff=MP34">register using this link</a> and enter the <strong>LingtrueAPI</strong> promo code when making the first recharge to enjoy a <strong>10% discount</strong>.
-    </td>
-  </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
       <a href="https://poixe.com/i/ebmvga">
         <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
       Poixe AI provides reliable LLM API services. You can leverage the platform's API endpoints to seamlessly build AI-powered products. Additionally, you can become a vendor by providing AI API resources to the platform and earn revenue. <a href="https://poixe.com/i/ebmvga">Register through the exclusive AIClient-2-API referral link</a> and receive a bonus of <strong>$5 USD</strong> on your first top-up.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://visioncoder.com">
+        <img src="static/visioncoder.png" alt="VisionCoder Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      Thanks to VisionCoder for supporting this project. VisionCoder Developer Platform is a reliable and efficient API relay service provider, offering access to mainstream AI models such as Claude Code, Codex, and Gemini. It helps developers and teams integrate AI capabilities more easily and improve productivity. VisionCoder is also offering our users a limited-time Token Plan promotion: buy 1 month and get 1 month free.
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.lingtrue.com/register?aff=MP34">
+        <img src="static/lingtrueapi.png" alt="LingtrueAPI Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      Thanks to LingtrueAPI for its sponsorship of this project! LingtrueAPI is a global large-model API intermediary service platform that offers API calling services for various models such as Claude opus 4.6, GPT 5.4, and Gemini 3.1 pro. It is committed to enabling users to connect to global AI capabilities at low cost and with high stability, maximizing production efficiency. LingtrueAPI provides special discounts for users of this software: <a href="https://www.lingtrue.com/register?aff=MP34">register using this link</a> and enter the <strong>LingtrueAPI</strong> promo code when making the first recharge to enjoy a <strong>10% discount</strong>.
     </td>
   </tr>
   <tr>
