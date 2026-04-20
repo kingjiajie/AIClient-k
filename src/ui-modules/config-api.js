@@ -27,7 +27,7 @@ export async function reloadConfig(providerPoolManager) {
             // Update provider pool manager if available
             if (providerPoolManager) {
                 providerPoolManager.providerPools = newConfig.providerPools;
-                providerPoolManager.initializeProviderStatus();
+                providerPoolManager.initializeProviderStatus(true);
             }
 
             // Update global CONFIG

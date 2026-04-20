@@ -58,6 +58,7 @@ export class ProviderPoolManager {
         'openai-codex-oauth': 'gpt-5-codex-mini',
         'openaiResponses-custom': 'gpt-4o-mini',
         'forward-api': 'gpt-4o-mini',
+        'grok-custom': 'grok-4.1-mini',
     };
 
     constructor(providerPools, options = {}) {
@@ -723,8 +724,9 @@ export class ProviderPoolManager {
     /**
      * Initializes the status for each provider in the pools.
      * Initially, all providers are considered healthy and have zero usage.
+     * @param {boolean} syncFromConfig - 是否强制从配置同步统计数据（不保留内存中的旧数据）
      */
-    initializeProviderStatus() {
+    initializeProviderStatus(syncFromConfig = false) {
         const oldFullStatus = this.providerStatus || {};
         const isColdStart = Object.keys(oldFullStatus).length === 0;
         this.providerStatus = {}; // Tracks health and usage for each provider instance
@@ -749,13 +751,14 @@ export class ProviderPoolManager {
                     providerConfig.isDisabled = providerConfig.isDisabled !== undefined ? providerConfig.isDisabled : false;
                     
                     // --- V3: 统计数据管理 ---
-                    if (isColdStart) {
-                        // 冷启动：清空所有统计数据
-                        providerConfig.lastUsed = null;
-                        providerConfig.usageCount = 0;
-                        providerConfig.errorCount = 0;
-                        providerConfig.lastErrorTime = null;
-                        providerConfig.lastErrorMessage = null;
+                    if (isColdStart || syncFromConfig) {
+                        // 冷启动或强制同步：使用传入配置中的统计数据
+                        // 如果传入配置中没有，则初始化为默认值
+                        providerConfig.lastUsed = providerConfig.lastUsed || null;
+                        providerConfig.usageCount = providerConfig.usageCount || 0;
+                        providerConfig.errorCount = providerConfig.errorCount || 0;
+                        providerConfig.lastErrorTime = providerConfig.lastErrorTime || null;
+                        providerConfig.lastErrorMessage = providerConfig.lastErrorMessage || null;
                     } else if (existing) {
                         // 热重载：从旧状态中恢复统计数据，避免被配置文件中的旧数据覆盖
                         providerConfig.lastUsed = existing.config.lastUsed;
@@ -1740,11 +1743,35 @@ export class ProviderPoolManager {
         if (provider) {
             provider.config.errorCount = 0;
             provider.config.usageCount = 0;
+            provider.config.isHealthy = true;
+            provider.config.lastErrorTime = null;
+            provider.config.lastErrorMessage = null;
             provider.config._lastSelectionSeq = 0;
             this._log('info', `Reset provider counters: ${provider.config.uuid} for type ${providerType}`);
             
             this._debouncedSave(providerType);
         }
+    }
+
+    /**
+     * 重置特定类型的所有提供商健康状态
+     * @param {string} providerType - 提供商类型
+     */
+    resetAllHealthInType(providerType) {
+        const pool = this.providerStatus[providerType];
+        if (!pool) return;
+
+        pool.forEach(provider => {
+            provider.config.isHealthy = true;
+            provider.config.errorCount = 0;
+            provider.config.lastErrorTime = null;
+            provider.config.lastErrorMessage = null;
+            provider.config.refreshCount = 0;
+            provider.config.needsRefresh = false;
+        });
+
+        this._log('info', `Reset all health status for type ${providerType}`);
+        this._debouncedSave(providerType);
     }
 
     /**

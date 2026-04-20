@@ -85,7 +85,7 @@ export const PROVIDER_MAPPINGS = [
         patterns: ['configs/grok/', '/grok/'],
         providerType: 'grok-custom',
         credPathKey: 'GROK_COOKIE_TOKEN',
-        defaultCheckModel: 'grok-3',
+        defaultCheckModel: 'grok-4.1-mini',
         displayName: 'Grok Reverse',
         needsProjectId: false,
         urlKeys: ['GROK_BASE_URL', 'GROK_CF_CLEARANCE', 'GROK_USER_AGENT']

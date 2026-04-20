@@ -832,52 +832,56 @@ export async function handleResetProviderHealth(req, res, currentConfig, provide
 async function _handleResetProviderHealth(req, res, currentConfig, providerPoolManager, providerType) {
     try {
         const filePath = currentConfig.PROVIDER_POOLS_FILE_PATH || 'configs/provider_pools.json';
-        let providerPools = {};
         
-        // Load existing pools
-        if (existsSync(filePath)) {
-            try {
-                const fileContent = readFileSync(filePath, 'utf-8');
-                providerPools = JSON.parse(fileContent);
-            } catch (readError) {
+        let resetCount = 0;
+        let totalCount = 0;
+
+        if (providerPoolManager && providerPoolManager.providerStatus[providerType]) {
+            // 如果管理器存在，优先使用管理器的方法直接重置内存和触发保存
+            const pool = providerPoolManager.providerStatus[providerType];
+            totalCount = pool.length;
+            
+            pool.forEach(ps => {
+                if (!ps.config.isHealthy) resetCount++;
+            });
+            
+            providerPoolManager.resetAllHealthInType(providerType);
+        } else {
+            // 回退逻辑：手动操作文件
+            let providerPools = {};
+            if (existsSync(filePath)) {
+                try {
+                    const fileContent = readFileSync(filePath, 'utf-8');
+                    providerPools = JSON.parse(fileContent);
+                } catch (readError) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { message: 'Provider pools file not found' } }));
+                    return true;
+                }
+            }
+
+            const providers = providerPools[providerType] || [];
+            if (providers.length === 0) {
                 res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: { message: 'Provider pools file not found' } }));
+                res.end(JSON.stringify({ error: { message: 'No providers found for this type' } }));
                 return true;
             }
+
+            totalCount = providers.length;
+            providers.forEach(provider => {
+                if (!provider.isHealthy) resetCount++;
+                provider.isHealthy = true;
+                provider.errorCount = 0;
+                provider.refreshCount = 0;
+                provider.needsRefresh = false;
+                provider.lastErrorTime = null;
+                provider.lastErrorMessage = null;
+            });
+
+            await atomicWriteFile(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
         }
 
-        // Reset health status for all providers of this type
-        const providers = providerPools[providerType] || [];
-        
-        if (providers.length === 0) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: { message: 'No providers found for this type' } }));
-            return true;
-        }
-
-        let resetCount = 0;
-        providers.forEach(provider => {
-            // 统计 isHealthy 从 false 变为 true 的节点数量
-            if (!provider.isHealthy) {
-                resetCount++;
-            }
-            // 重置所有节点的状态
-            provider.isHealthy = true;
-            provider.errorCount = 0;
-            provider.refreshCount = 0;
-            provider.needsRefresh = false;
-            provider.lastErrorTime = null;
-        });
-
-        // Save to file
-        await atomicWriteFile(filePath, JSON.stringify(providerPools, null, 2), 'utf-8');
         logger.info(`[UI API] Reset health status for ${resetCount} providers in ${providerType}`);
-
-        // Update provider pool manager if available
-        if (providerPoolManager) {
-            providerPoolManager.providerPools = providerPools;
-            providerPoolManager.initializeProviderStatus();
-        }
 
         // 广播更新事件
         broadcastEvent('config_update', {
@@ -893,7 +897,7 @@ async function _handleResetProviderHealth(req, res, currentConfig, providerPoolM
             success: true,
             message: `Successfully reset health status for ${resetCount} providers`,
             resetCount,
-            totalCount: providers.length
+            totalCount
         }));
         return true;
     } catch (error) {
@@ -1427,11 +1431,10 @@ export async function handleQuickLinkProvider(req, res, currentConfig, providerP
                 return poolsFilePath;
             });
 
-            // Update provider pool manager if available
-            if (providerPoolManager) {
-                providerPoolManager.providerPools = providerPools;
-                providerPoolManager.initializeProviderStatus();
-            }
+        // Update provider pool manager if available
+        if (providerPoolManager) {
+            providerPoolManager.resetAllHealthInType(providerType);
+        }
 
             // Broadcast update events
             broadcastEvent('config_update', {
