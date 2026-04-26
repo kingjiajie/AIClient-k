@@ -5,6 +5,7 @@ import { formatKiroUsage, formatGeminiUsage, formatAntigravityUsage, formatCodex
 import { readUsageCache, writeUsageCache, readProviderUsageCache, updateProviderUsageCache } from './usage-cache.js';
 import { PROVIDER_MAPPINGS } from '../utils/provider-utils.js';
 import path from 'path';
+import { existsSync, readFileSync } from 'fs';
 
 const supportedProviders = ['claude-kiro-oauth', 'gemini-cli-oauth', 'gemini-antigravity', 'openai-codex-oauth', 'grok-custom'];
 
@@ -50,6 +51,37 @@ async function getAllProvidersUsage(currentConfig, providerPoolManager) {
 }
 
 /**
+ * 加载提供商池数据（从内存或文件）
+ * @param {string} providerType - 提供商类型
+ * @param {Object} currentConfig - 当前配置
+ * @param {Object} providerPoolManager - 提供商池管理器
+ * @returns {Array} 提供商列表
+ */
+function loadProviderList(providerType, currentConfig, providerPoolManager) {
+    // 优先从内存获取
+    if (providerPoolManager && providerPoolManager.providerPools && providerPoolManager.providerPools[providerType]) {
+        return providerPoolManager.providerPools[providerType];
+    }
+    if (currentConfig.providerPools && currentConfig.providerPools[providerType]) {
+        return currentConfig.providerPools[providerType];
+    }
+    // Fallback: 从文件读取
+    const filePath = currentConfig.PROVIDER_POOLS_FILE_PATH || 'configs/provider_pools.json';
+    try {
+        if (existsSync(filePath)) {
+            const poolsData = JSON.parse(readFileSync(filePath, 'utf-8'));
+            if (poolsData[providerType] && poolsData[providerType].length > 0) {
+                logger.info(`[Usage API] Loaded ${poolsData[providerType].length} providers for ${providerType} from file fallback`);
+                return poolsData[providerType];
+            }
+        }
+    } catch (fileError) {
+        logger.warn(`[Usage API] Failed to load provider pools from file: ${fileError.message}`);
+    }
+    return [];
+}
+
+/**
  * 获取指定提供商类型的用量信息
  * @param {string} providerType - 提供商类型
  * @param {Object} currentConfig - 当前配置
@@ -65,13 +97,8 @@ async function getProviderTypeUsage(providerType, currentConfig, providerPoolMan
         errorCount: 0
     };
 
-    // 获取提供商池中的所有实例
-    let providers = [];
-    if (providerPoolManager && providerPoolManager.providerPools && providerPoolManager.providerPools[providerType]) {
-        providers = providerPoolManager.providerPools[providerType];
-    } else if (currentConfig.providerPools && currentConfig.providerPools[providerType]) {
-        providers = currentConfig.providerPools[providerType];
-    }
+    // 获取提供商池中的所有实例（使用统一的加载函数）
+    const providers = loadProviderList(providerType, currentConfig, providerPoolManager);
 
     result.totalCount = providers.length;
 
@@ -201,24 +228,25 @@ async function getAdapterUsage(adapter, providerType) {
  * @returns {string} 显示名称
  */
 function getProviderDisplayName(provider, providerType) {
-    // 优先使用自定义名称
+    // 1. 优先使用自定义名称
     if (provider.customName) {
         return provider.customName;
     }
 
-    if (provider.uuid) {
-        return provider.uuid;
-    }
-
-    // 尝试从凭据文件路径提取名称
+    // 2. 尝试从凭据文件路径提取名称（自动从文件名识别账号）
     const mapping = PROVIDER_MAPPINGS.find(m => m.providerType === providerType);
     const credPathKey = mapping ? mapping.credPathKey : null;
 
     if (credPathKey && provider[credPathKey]) {
         const filePath = provider[credPathKey];
-        const fileName = path.basename(filePath);
-        const dirName = path.basename(path.dirname(filePath));
-        return `${dirName}/${fileName}`;
+        // 提取文件名（不含扩展名）作为显示名称，例如 account-a.json -> account-a
+        const fileName = path.basename(filePath, path.extname(filePath));
+        return fileName;
+    }
+
+    // 3. 兜底显示 UUID
+    if (provider.uuid) {
+        return provider.uuid;
     }
 
     return 'Unnamed';

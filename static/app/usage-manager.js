@@ -7,10 +7,10 @@ import { t, getCurrentLanguage } from './i18n.js';
 /**
  * 不支持显示用量数据的提供商列表
  * 这些提供商只显示模型名称和重置时间，不显示用量数字和进度条
+ * 
+ * 注：gemini-antigravity 已支持 remainingPercent，移除限制
  */
-const PROVIDERS_WITHOUT_USAGE_DISPLAY = [
-    'gemini-antigravity'
-];
+const PROVIDERS_WITHOUT_USAGE_DISPLAY = [];
 
 // 提供商配置缓存
 let currentProviderConfigs = null;
@@ -702,21 +702,35 @@ function createUsageBreakdownHTML(breakdown, providerType) {
     // 检查是否应该显示用量信息
     const showUsage = shouldShowUsage(providerType);
 
-    const usagePercent = breakdown.usageLimit > 0
-        ? Math.min(100, (breakdown.currentUsage / breakdown.usageLimit) * 100)
-        : 0;
+    // 优先使用 remainingPercent（antigravity 等提供商提供）
+    const hasRemainingPct = breakdown.remainingPercent !== undefined && breakdown.remainingPercent !== null;
+    const usagePercent = hasRemainingPct
+        ? (100 - breakdown.remainingPercent)
+        : (breakdown.usageLimit > 0
+            ? Math.min(100, (breakdown.currentUsage / breakdown.usageLimit) * 100)
+            : 0);
+    const remainingPercent = hasRemainingPct ? breakdown.remainingPercent : (100 - usagePercent);
+    const progressFillPercent = hasRemainingPct ? remainingPercent : usagePercent;
     
-    const progressClass = usagePercent >= 90 ? 'danger' : (usagePercent >= 70 ? 'warning' : 'normal');
+    const progressClass = remainingPercent <= 10 ? 'danger' : (remainingPercent <= 30 ? 'warning' : 'normal');
+
+    // 显示格式：如果有 remainingPercent，显示剩余百分比；否则显示已用/总量
+    let usageDisplay = '';
+    if (hasRemainingPct) {
+        usageDisplay = `<span class="breakdown-usage">${remainingPercent}%</span>`;
+    } else if (showUsage && breakdown.usageLimit > 0) {
+        usageDisplay = `<span class="breakdown-usage">${formatNumber(breakdown.currentUsage)} / ${formatNumber(breakdown.usageLimit)}</span>`;
+    }
 
     let html = `
         <div class="breakdown-item-compact">
             <div class="breakdown-header-compact">
-                <span class="breakdown-name">${breakdown.displayName || breakdown.resourceType}</span>
-                ${showUsage ? `<span class="breakdown-usage">${formatNumber(breakdown.currentUsage)} / ${formatNumber(breakdown.usageLimit)}</span>` : ''}
+                <span class="breakdown-name">${breakdown.displayName || breakdown.modelName || breakdown.resourceType}</span>
+                ${usageDisplay}
             </div>
             ${showUsage ? `
             <div class="progress-bar-small ${progressClass}">
-                <div class="progress-fill" style="width: ${usagePercent}%"></div>
+                <div class="progress-fill" style="width: ${progressFillPercent}%"></div>
             </div>
             ` : ''}
     `;
