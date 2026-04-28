@@ -25,6 +25,8 @@
 
 ## 💎 赞助商
 
+*排序按赞助先后顺序排列，均推荐注册使用。*
+
 <table width="100%">
   <tr>
     <td width="25%" align="center" valign="middle">

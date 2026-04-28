@@ -26,6 +26,8 @@
 
 ## 💎 スポンサー
 
+*スポンサーは先着順に掲載されており、すべてのアカウント登録と利用を推奨します。*
+
 <table width="100%">
   <tr>
     <td width="25%" align="center" valign="middle">

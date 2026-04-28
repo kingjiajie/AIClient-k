@@ -26,6 +26,8 @@
 
 ## 💎 Sponsors
 
+*Sponsors are listed in chronological order; all are recommended for registration and use.*
+
 <table width="100%">
   <tr>
     <td width="25%" align="center" valign="middle">
