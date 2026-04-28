@@ -2,9 +2,11 @@ import {
     handleModelListRequest,
     handleContentGenerationRequest,
     API_ACTIONS,
-    ENDPOINT_TYPE
+    ENDPOINT_TYPE,
+    getRequestBody,
+    getRateLimitCooldownRecoveryTime
 } from '../utils/common.js';
-import { getProviderPoolManager } from './service-manager.js';
+import { getProviderPoolManager, getApiServiceWithFallback } from './service-manager.js';
 import logger from '../utils/logger.js';
 /**
  * Handle API authentication and routing
@@ -31,6 +33,12 @@ export async function handleAPIRequests(method, path, req, res, currentConfig, a
             await handleModelListRequest(req, res, apiService, ENDPOINT_TYPE.GEMINI_MODEL_LIST, currentConfig, providerPoolManager, currentConfig.uuid);
             return true;
         }
+    }
+
+    // Route image generation requests
+    if (method === 'POST' && path === '/v1/images/generations') {
+        await handleImageGenerationRequest(req, res, currentConfig, providerPoolManager);
+        return true;
     }
 
     // Route content generation requests
@@ -93,6 +101,161 @@ export function initializeAPIManagement(services) {
             }
         }
     };
+}
+
+/**
+ * Handle POST /v1/images/generations - OpenAI 标准生图接口
+ */
+async function handleImageGenerationRequest(req, res, currentConfig, providerPoolManager, retryContext = null) {
+    const IMAGE_GEN_MAX_N = 4;
+    const VALID_RESPONSE_FORMATS = new Set(['b64_json', 'url']);
+
+    const maxRetries = retryContext?.maxRetries ?? 3;
+    const currentRetry = retryContext?.currentRetry ?? 0;
+    const CONFIG = retryContext?.CONFIG ?? currentConfig;
+
+    let slotProviderType = null;
+    let slotUuid = null;
+    let model, n, response_format, size, codexRequestBody;
+
+    try {
+        if (retryContext?.parsedBody) {
+            ({model, n, response_format, size, codexRequestBody} = retryContext.parsedBody);
+        } else {
+            const body = await getRequestBody(req);
+            model = body.model || 'gpt-image-2';
+            response_format = body.response_format || 'b64_json';
+            size = body.size;
+            // cap n：至少 1，最多 IMAGE_GEN_MAX_N，非数字降级为 1
+            n = Math.min(Math.max(1, parseInt(body.n) || 1), IMAGE_GEN_MAX_N);
+            const prompt = body.prompt;
+
+            if (!prompt) {
+                res.writeHead(400, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({error: {message: 'prompt is required', type: 'invalid_request_error'}}));
+                return;
+            }
+
+            if (!VALID_RESPONSE_FORMATS.has(response_format)) {
+                res.writeHead(400, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({
+                    error: {
+                        message: `response_format must be 'b64_json' or 'url'`,
+                        type: 'invalid_request_error'
+                    }
+                }));
+                return;
+            }
+
+            // 构造 Codex 格式请求，prepareRequestBody 会自动处理 gpt-image-2 → gpt-5.4 + image_generation tool
+            codexRequestBody = {
+                model,
+                input: [{
+                    type: 'message',
+                    role: 'user',
+                    content: [{type: 'input_text', text: prompt}]
+                }],
+                ...(size ? {_imageSize: size} : {})
+            };
+        }
+
+        // 从号池获取服务实例，acquireSlot 与其他接口保持一致
+        const shouldUsePool = !!(providerPoolManager && CONFIG.providerPools);
+        const result = await getApiServiceWithFallback(CONFIG, model, {acquireSlot: shouldUsePool});
+        const service = result.service;
+
+        if (!service) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { message: 'No service available for image generation', type: 'server_error' } }));
+            return;
+        }
+
+        // 记录 slot 信息，供 finally 释放
+        if (shouldUsePool && result.uuid) {
+            slotProviderType = result.actualProviderType || CONFIG.MODEL_PROVIDER;
+            slotUuid = result.uuid;
+        }
+
+        logger.info(`[Image Generation] model=${model}, n=${n}, response_format=${response_format}${size ? `, size=${size}` : ''}`);
+
+        // 串行发起 n 张图请求，每张独立占用一次上游调用，与号池 slot 计数对应
+        const data = [];
+        for (let i = 0; i < n; i++) {
+            const completedEvent = await service.generateContent(model, {...codexRequestBody});
+            const output = completedEvent?.response?.output || [];
+            for (const item of output) {
+                if (item.type === 'image_generation_call' && item.result) {
+                    const dataItem = response_format === 'url'
+                        ? { url: `data:image/${item.output_format || 'png'};base64,${item.result}` }
+                        : { b64_json: item.result };
+                    if (item.revised_prompt) dataItem.revised_prompt = item.revised_prompt;
+                    data.push(dataItem);
+                }
+            }
+        }
+
+        if (data.length === 0) {
+            logger.error('[Image Generation] No image found in response output');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { message: 'Image generation failed: no image in response', type: 'server_error' } }));
+            return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ created: Math.floor(Date.now() / 1000), data }));
+    } catch (error) {
+        logger.error('[Image Generation] Error:', error.message);
+
+        const shouldSwitchCredential = error.shouldSwitchCredential === true;
+        let credentialMarkedUnhealthy = error.credentialMarkedUnhealthy === true;
+
+        if (providerPoolManager && slotUuid) {
+            const rateLimitRecoveryTime = getRateLimitCooldownRecoveryTime(error, CONFIG);
+            if (rateLimitRecoveryTime) {
+                logger.info(`[Provider Pool] Applying 429 cooldown for ${slotProviderType} (${slotUuid})`);
+                providerPoolManager.markProviderUnhealthyWithRecoveryTime(slotProviderType, {uuid: slotUuid}, '429 Too Many Requests - short cooldown', rateLimitRecoveryTime);
+                credentialMarkedUnhealthy = true;
+            } else if (!credentialMarkedUnhealthy && !error.skipErrorCount) {
+                if (error.response?.status !== 400) {
+                    logger.info(`[Provider Pool] Marking ${slotProviderType} as unhealthy due to image generation error (status: ${error.response?.status || 'unknown'})`);
+                    providerPoolManager.markProviderUnhealthy(slotProviderType, {uuid: slotUuid}, error.message);
+                    credentialMarkedUnhealthy = true;
+                }
+            }
+        }
+
+        if (shouldSwitchCredential && !credentialMarkedUnhealthy) {
+            credentialMarkedUnhealthy = true;
+        }
+
+        if (credentialMarkedUnhealthy && currentRetry < maxRetries && providerPoolManager && CONFIG) {
+            const randomDelay = Math.floor(Math.random() * 10000);
+            logger.info(`[Image Generation Retry] Credential marked unhealthy. Waiting ${randomDelay}ms before retry ${currentRetry + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, randomDelay));
+
+            try {
+                return await handleImageGenerationRequest(req, res, CONFIG, providerPoolManager, {
+                    ...retryContext,
+                    CONFIG,
+                    currentRetry: currentRetry + 1,
+                    maxRetries,
+                    parsedBody: {model, n, response_format, size, codexRequestBody}
+                });
+            } catch (retryError) {
+                logger.error('[Image Generation Retry] Failed to get alternative service:', retryError.message);
+            }
+        }
+
+        if (!res.writableEnded) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { message: error.message, type: 'server_error' } }));
+        }
+    } finally {
+        // 确保并发槽在请求结束后归还（与 handleStreamRequest/handleUnaryRequest 保持一致）
+        if (providerPoolManager && slotProviderType && slotUuid) {
+            providerPoolManager.releaseSlot(slotProviderType, slotUuid);
+        }
+    }
 }
 
 /**

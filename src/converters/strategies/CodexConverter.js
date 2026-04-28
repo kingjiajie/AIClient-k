@@ -677,7 +677,7 @@ export class CodexConverter extends BaseConverter {
                 case 'message':
                     if (Array.isArray(item.content)) {
                         const contentItem = item.content.find(c => c.type === 'output_text');
-                        if (contentItem) contentText = contentItem.text;
+                        if (contentItem?.text) contentText = contentItem.text;
                     }
                     break;
                 case 'function_call':

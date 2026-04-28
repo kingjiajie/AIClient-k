@@ -119,6 +119,7 @@ export const PROVIDER_MODELS = {
         'gpt-5.4',
         'gpt-5.4-mini',
         'gpt-5.5',
+        'gpt-image-2',
     ],
     'forward-api': [],
     'grok-custom': [

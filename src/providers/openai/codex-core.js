@@ -1,15 +1,15 @@
 import axios from 'axios';
 import logger from '../../utils/logger.js';
 import crypto from 'crypto';
-import { promises as fs } from 'fs';
+import {promises as fs} from 'fs';
 import path from 'path';
 import os from 'os';
-import { refreshCodexTokensWithRetry } from '../../auth/oauth-handlers.js';
-import { getProviderPoolManager } from '../../services/service-manager.js';
-import { configureTLSSidecar, isTLSSidecarEnabledForProvider } from '../../utils/proxy-utils.js';
-import { MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
-import { getProxyConfigForProvider } from '../../utils/proxy-utils.js';
-import { getProviderModels } from '../provider-models.js';
+import {refreshCodexTokensWithRetry} from '../../auth/oauth-handlers.js';
+import {getProviderPoolManager} from '../../services/service-manager.js';
+import {configureTLSSidecar, isTLSSidecarEnabledForProvider} from '../../utils/proxy-utils.js';
+import {MODEL_PROVIDER, formatExpiryLog} from '../../utils/common.js';
+import {getProxyConfigForProvider} from '../../utils/proxy-utils.js';
+import {getProviderModels} from '../provider-models.js';
 
 const baseModels = getProviderModels(MODEL_PROVIDER.CODEX_API);
 const fastModels = baseModels.map(m => `${m}-fast`);
@@ -38,7 +38,7 @@ export class CodexApiService {
         this.conversationCache = new Map(); // key: model-userId, value: {id, expire}
         this.startCacheCleanup();
 
-        this.imageGenTool = { type: 'image_generation', output_format: 'png' };
+        this.imageGenTool = {type: 'image_generation', output_format: 'png'};
     }
 
     _applySidecar(axiosConfig) {
@@ -232,7 +232,8 @@ export class CodexApiService {
                 error.skipErrorCount = true;
                 throw error;
             } else {
-                logger.error(`[Codex] Error calling non-stream API (Status: ${error.response?.status}, Code: ${error.code || 'N/A'}):`, error.message);
+                const errBody = error.response?.data ? String(error.response.data).slice(0, 500) : '';
+                logger.error(`[Codex] Error calling non-stream API (Status: ${error.response?.status}, Code: ${error.code || 'N/A'}): ${error.message}${errBody ? ` | body: ${errBody}` : ''}`);
                 throw error;
             }
         }
@@ -241,7 +242,7 @@ export class CodexApiService {
     /**
      * 流式生成内容
      */
-    async *generateContentStream(model, requestBody) {
+    async* generateContentStream(model, requestBody) {
         if (!this.isInitialized) {
             await this.initialize();
         }
@@ -382,10 +383,10 @@ export class CodexApiService {
     async prepareRequestBody(model, requestBody, stream) {
         // 提取 metadata 并从请求体中移除，避免透传到上游
         const metadata = requestBody.metadata || {};
-        
+
         // 明确会话维度：优先使用 session_id 或 conversation_id，其次 user_id
         const sessionId = metadata.session_id || metadata.conversation_id || metadata.user_id || 'default';
-        
+
         // 判断是否为 fast 模型并确定默认值
         const normalizedModel = String(model || '').trim();
         const isFastModel = /-fast$/i.test(normalizedModel);
@@ -393,21 +394,41 @@ export class CodexApiService {
         const defaultServiceTier = isFastModel ? 'priority' : 'default';
         const defaultReasoningEffort = isFastModel ? 'xhigh' : 'medium';
 
-        const cleanedBody = { ...requestBody };
+        // 图像生成模型：gpt-image-2 通过 image_generation 工具 + gpt-5.4 实现
+        const IMAGE_MODELS = ['gpt-image-2'];
+        const isImageModel = IMAGE_MODELS.includes(upstreamModel);
+        const effectiveUpstreamModel = isImageModel ? 'gpt-5.4' : upstreamModel;
+
+        const cleanedBody = {...requestBody};
         delete cleanedBody.metadata;
 
         // 【关键修复】确保传给上游的模型名称不带 -fast 后缀
         // 即使 originalRequestBody 中已经带了 model，这里也必须覆盖
-        cleanedBody.model = upstreamModel;
+        cleanedBody.model = effectiveUpstreamModel;
 
-        // 为所有 Codex 模型增加默认工具
-        if (!cleanedBody.tools) {
-            cleanedBody.tools = [];
-        }
-        if (Array.isArray(cleanedBody.tools)) {
-            const hasWebSearch = cleanedBody.tools.some(t => t.type === 'web_search');
-            if (!hasWebSearch) {
-                cleanedBody.tools.push({ type: 'web_search' });
+        if (isImageModel) {
+            // 图像模型：强制使用 image_generation 工具，不加 web_search
+            const imageToolConfig = {type: 'image_generation'};
+            if (cleanedBody._imageSize) {
+                imageToolConfig.size = cleanedBody._imageSize;
+            }
+            delete cleanedBody._imageSize;
+            cleanedBody.tools = [imageToolConfig];
+            // 服务器要求 instructions 非空
+            if (!cleanedBody.instructions?.trim()) {
+                cleanedBody.instructions = 'You are a helpful assistant.';
+            }
+            logger.info(`[Codex] Image model detected: ${upstreamModel} -> ${effectiveUpstreamModel} with image_generation tool${imageToolConfig.size ? `, size=${imageToolConfig.size}` : ''}`);
+        } else {
+            // 为普通 Codex 模型增加默认工具
+            if (!cleanedBody.tools) {
+                cleanedBody.tools = [];
+            }
+            if (Array.isArray(cleanedBody.tools)) {
+                const hasWebSearch = cleanedBody.tools.some(t => t.type === 'web_search');
+                if (!hasWebSearch) {
+                    cleanedBody.tools.push({type: 'web_search'});
+                }
             }
         }
 
@@ -425,7 +446,7 @@ export class CodexApiService {
         if (sessionId === 'default') {
             cacheKey = `${model}-default`;
         }
-        
+
         let cache = this.conversationCache.get(cacheKey);
 
         if (!cache || cache.expire < Date.now()) {
@@ -439,10 +460,14 @@ export class CodexApiService {
         // 注意：requestBody 已经去除了 metadata
         const result = {
             ...cleanedBody,
+            store: cleanedBody.store ?? false,
+            parallel_tool_calls: cleanedBody.parallel_tool_calls ?? true,
+            include: cleanedBody.include || ['reasoning.encrypted_content'],
             service_tier: cleanedBody.service_tier || defaultServiceTier,
             reasoning: {
                 ...cleanedBody.reasoning,
-                effort: isFastModel ? defaultReasoningEffort : (cleanedBody.reasoning?.effort === 'minimal' ? 'none' : (cleanedBody.reasoning?.effort || defaultReasoningEffort))
+                effort: isFastModel ? defaultReasoningEffort : (cleanedBody.reasoning?.effort === 'minimal' ? 'none' : (cleanedBody.reasoning?.effort || defaultReasoningEffort)),
+                summary: cleanedBody.reasoning?.summary || 'auto',
             },
             stream,
             prompt_cache_key: cache.id
@@ -457,7 +482,7 @@ export class CodexApiService {
         // 监控钩子：内部请求转换
         if (this.config?._monitorRequestId) {
             try {
-                const { getPluginManager } = await import('../../core/plugin-manager.js');
+                const {getPluginManager} = await import('../../core/plugin-manager.js');
                 const pluginManager = getPluginManager();
                 if (pluginManager) {
                     await pluginManager.executeHook('onInternalRequestConverted', {
@@ -526,7 +551,7 @@ export class CodexApiService {
             return true;
         }
         const nearMinutes = 20;
-        const { message, isNearExpiry } = formatExpiryLog('Codex', expiry, nearMinutes);
+        const {message, isNearExpiry} = formatExpiryLog('Codex', expiry, nearMinutes);
         logger.info(message);
         return isNearExpiry;
     }
@@ -563,7 +588,7 @@ export class CodexApiService {
             throw new Error('Invalid expiresAt when saving Codex credentials');
         }
 
-        await fs.mkdir(credsDir, { recursive: true });
+        await fs.mkdir(credsDir, {recursive: true});
         await fs.writeFile(
             credsPath,
             JSON.stringify(
@@ -580,7 +605,7 @@ export class CodexApiService {
                 null,
                 2
             ),
-            { mode: 0o600 }
+            {mode: 0o600}
         );
 
         // 更新缓存路径（例如首次无 credsPath 兜底生成了新文件）
@@ -620,8 +645,8 @@ export class CodexApiService {
         const response = eventData.response || {};
         const output = response.output;
 
-        const shouldPatch = (!output || !Array.isArray(output) || output.length === 0) && 
-                           (outputItemsByIndex.size > 0 || outputItemsFallback.length > 0);
+        const shouldPatch = (!output || !Array.isArray(output) || output.length === 0) &&
+            (outputItemsByIndex.size > 0 || outputItemsFallback.length > 0);
 
         if (!shouldPatch) {
             return eventData;
@@ -647,7 +672,7 @@ export class CodexApiService {
     /**
      * 解析 SSE 流
      */
-    async *parseSSEStream(stream) {
+    async* parseSSEStream(stream) {
         let buffer = '';
         const outputItemsByIndex = new Map();
         const outputItemsFallback = [];
@@ -668,7 +693,7 @@ export class CodexApiService {
                 if (dataStr && dataStr !== '[DONE]') {
                     try {
                         let parsed = JSON.parse(dataStr);
-                        
+
                         if (parsed.type === 'error') {
                             logger.error('[Codex] API returned error in stream:', parsed.error || parsed);
                             const errorMsg = (parsed.error && parsed.error.message) || JSON.stringify(parsed.error || parsed);
@@ -745,10 +770,10 @@ export class CodexApiService {
         const lines = responseText.split('\n');
         const outputItems = new Map(); // id -> output item
         const textDeltas = new Map(); // item_id -> accumulated text
-        
+
         const outputItemsByIndex = new Map();
         const outputItemsFallback = [];
-        
+
         let completedEvent = null;
 
         for (const line of lines) {
@@ -759,7 +784,7 @@ export class CodexApiService {
             if (trimmedLine.startsWith('data: ')) {
                 jsonData = trimmedLine.slice(6).trim();
             }
-            
+
             if (!jsonData || jsonData === '[DONE]') {
                 continue;
             }
@@ -809,7 +834,7 @@ export class CodexApiService {
             // 如果我们已经收集到了一些输出项或文本，尝试合成一个完成事件
             if (outputItems.size > 0 || textDeltas.size > 0 || outputItemsByIndex.size > 0 || outputItemsFallback.length > 0) {
                 logger.warn('[Codex] No completed response found, but some output items were received. Synthesizing response.');
-                
+
                 // 构造一个模拟的 completed 事件
                 completedEvent = {
                     type: 'response.completed',
@@ -821,10 +846,10 @@ export class CodexApiService {
                         output: []
                     }
                 };
-                
+
                 // 使用 patchCodexCompletedOutput 填充输出
                 completedEvent = this.patchCodexCompletedOutput(completedEvent, outputItemsByIndex, outputItemsFallback);
-                
+
                 // 如果 patch 后还是没输出，尝试直接从 outputItems 填充
                 if (completedEvent.response.output.length === 0 && outputItems.size > 0) {
                     completedEvent.response.output = Array.from(outputItems.values());
@@ -834,25 +859,25 @@ export class CodexApiService {
                 // 记录前 1000 个字符用于调试
                 const debugInfo = responseText.length > 1000 ? responseText.slice(0, 1000) + '...' : responseText;
                 logger.debug('[Codex] Raw response data:', debugInfo);
-                
+
                 throw new Error('stream error: stream disconnected before completion: stream closed before response.completed');
             }
         }
 
-        // 用累积的 delta 文本填充 output items 中缺失的内容
-        if (completedEvent.response && textDeltas.size > 0) {
+        // 用累积的 delta 文本 & output_item.done 数据填充 output items 中缺失的内容
+        if (completedEvent.response) {
             const output = completedEvent.response.output || [];
+
             for (const item of output) {
                 if (item.type === 'message' && item.role === 'assistant') {
                     const accumulatedText = textDeltas.get(item.id);
                     if (accumulatedText !== undefined) {
-                        // content 为空或不含 output_text，直接注入
                         if (!item.content || item.content.length === 0) {
-                            item.content = [{ type: 'output_text', text: accumulatedText }];
+                            item.content = [{type: 'output_text', text: accumulatedText}];
                         } else {
                             item.content = item.content.map(c => {
                                 if (c.type === 'output_text' && !c.text) {
-                                    return { ...c, text: accumulatedText };
+                                    return {...c, text: accumulatedText};
                                 }
                                 return c;
                             });
@@ -860,12 +885,13 @@ export class CodexApiService {
                     }
                 }
             }
+
             // 如果 output 完全为空，从累积事件重建
             if (output.length === 0 && outputItems.size > 0) {
                 for (const [id, item] of outputItems) {
                     const accumulatedText = textDeltas.get(id);
                     if (accumulatedText !== undefined && item.type === 'message') {
-                        item.content = [{ type: 'output_text', text: accumulatedText }];
+                        item.content = [{type: 'output_text', text: accumulatedText}];
                     }
                     output.push(item);
                 }
@@ -961,10 +987,10 @@ export class CodexApiService {
             this._applySidecar(axiosRequestConfig);
 
             const response = await axios.request(axiosRequestConfig);
-            
+
             // 解析响应数据并转换为通用格式
             const data = response.data;
-            
+
             // 通用格式：{ lastUpdated, models: { "model-id": { remaining, resetTime, resetTimeRaw } } }
             const result = {
                 lastUpdated: Date.now(),
@@ -976,13 +1002,13 @@ export class CodexApiService {
             if (data.rate_limit) {
                 const primaryWindow = data.rate_limit.primary_window;
                 const secondaryWindow = data.rate_limit.secondary_window;
-                
+
                 // 使用主窗口的数据作为主要配额信息
                 if (primaryWindow) {
                     // remaining = 1 - (used_percent / 100)
                     const remaining = 1 - (primaryWindow.used_percent || 0) / 100;
                     const resetTime = primaryWindow.reset_at ? new Date(primaryWindow.reset_at * 1000).toISOString() : null;
-                    
+
                     // 为所有 Codex 模型设置相同的配额信息
                     const codexModels = ['default'];
                     for (const modelId of codexModels) {
@@ -1017,7 +1043,7 @@ export class CodexApiService {
                 error.shouldSwitchCredential = true;
                 error.skipErrorCount = true;
             }
-            
+
             logger.error('[Codex] Failed to get usage limits:', error.message);
             throw error;
         }
