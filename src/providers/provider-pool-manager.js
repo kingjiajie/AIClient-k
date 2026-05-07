@@ -2238,9 +2238,11 @@ export class ProviderPoolManager {
 
         // ========== 实际 API 健康检查（带超时保护）==========
         const tempConfig = {
+            ...this.globalConfig,
             ...providerConfig,
             MODEL_PROVIDER: providerType
         };
+        delete tempConfig.providerPools;
         const serviceAdapter = getServiceAdapter(tempConfig);
 
         // 获取所有可能的请求格式
