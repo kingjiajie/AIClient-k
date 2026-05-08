@@ -23,14 +23,29 @@ function normalizeConfiguredProviders(config) {
         if (!trimmed) {
             return;
         }
+
+        // 1. 优先尝试精确匹配基础类型
         const matched = ALL_MODEL_PROVIDERS.find((provider) => provider.toLowerCase() === trimmed.toLowerCase());
-        if (!matched) {
-            logger.warn(`[Config Warning] Unknown model provider '${trimmed}'. This entry will be ignored.`);
+        if (matched) {
+            if (!dedupedProviders.includes(matched)) {
+                dedupedProviders.push(matched);
+            }
             return;
         }
-        if (!dedupedProviders.includes(matched)) {
-            dedupedProviders.push(matched);
+
+        // 2. 尝试前缀匹配 (支持带后缀的自定义分组，例如 openai-custom-1)
+        const prefixMatch = ALL_MODEL_PROVIDERS.find((provider) => 
+            provider !== 'auto' && trimmed.toLowerCase().startsWith(provider.toLowerCase() + '-')
+        );
+        
+        if (prefixMatch) {
+            if (!dedupedProviders.includes(trimmed)) {
+                dedupedProviders.push(trimmed);
+            }
+            return;
         }
+
+        logger.warn(`[Config Warning] Unknown model provider '${trimmed}'. This entry will be ignored.`);
     };
 
     const rawValue = config.MODEL_PROVIDER;
@@ -82,6 +97,10 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         REQUEST_MAX_RETRIES: 3,
         REQUEST_BASE_DELAY: 1000,
         CREDENTIAL_SWITCH_MAX_RETRIES: 5, // 坏凭证切换最大重试次数（用于认证错误后切换凭证）
+        RATE_LIMIT_COOLDOWN_ENABLED: false, // 429 限流后是否短暂冷却账号
+        RATE_LIMIT_COOLDOWN_MS: 30000, // 429 限流默认冷却时间（毫秒）
+        RATE_LIMIT_COOLDOWN_JITTER_MS: 5000, // 429 限流冷却随机抖动（毫秒）
+        RATE_LIMIT_COOLDOWN_MAX_MS: 300000, // Retry-After 允许的最大冷却时间（毫秒）
         CRON_NEAR_MINUTES: 15,
         CRON_REFRESH_TOKEN: false,
         LOGIN_EXPIRY: 3600, // 登录过期时间（秒），默认1小时
@@ -90,6 +109,7 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         LOGIN_MIN_INTERVAL: 5000, // 两次尝试之间的最小间隔（毫秒），默认1秒
         PROVIDER_POOLS_FILE_PATH: null, // 新增号池配置文件路径
         MAX_ERROR_COUNT: 10, // 提供商最大错误次数
+        CUSTOM_MODELS_FILE_PATH: null, // 自定义模型配置文件路径
         SYSTEM_PROMPT_REPLACEMENTS: [], // 系统提示词内容替换规则，例如: [{"old": "AI", "new": "Bot"}, {"old": "OpenAI", "new": "Gemini"}]
         SCHEDULED_HEALTH_CHECK: {
             enabled: false,
@@ -109,7 +129,8 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         TLS_SIDECAR_ENABLED_PROVIDERS: [], // 启用 TLS Sidecar 的提供商列表
         TLS_SIDECAR_PORT: 9090,     // sidecar 监听端口
         TLS_SIDECAR_BINARY_PATH: null, // 自定义二进制路径（默认自动搜索）
-        TLS_SIDECAR_PROXY_URL: null    // TLS Sidecar 专用的上游代理地址
+        TLS_SIDECAR_PROXY_URL: null,    // TLS Sidecar 专用的上游代理地址
+        UI_ENABLED: true           // 是否启用前端管理界面
     };
 
     let currentConfig = { ...defaultConfig };
@@ -139,15 +160,23 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         { flag: '--system-prompt-mode',   configKey: 'SYSTEM_PROMPT_MODE',     type: 'enum', validValues: ['overwrite', 'append'] },
         { flag: '--host',                 configKey: 'HOST',                   type: 'string' },
         { flag: '--prompt-log-base-name', configKey: 'PROMPT_LOG_BASE_NAME',   type: 'string' },
+        { flag: '--request-max-retries',  configKey: 'REQUEST_MAX_RETRIES',    type: 'int' },
+        { flag: '--rate-limit-cooldown-enabled', configKey: 'RATE_LIMIT_COOLDOWN_ENABLED', type: 'bool' },
+        { flag: '--rate-limit-cooldown-ms', configKey: 'RATE_LIMIT_COOLDOWN_MS', type: 'int' },
+        { flag: '--rate-limit-cooldown-jitter-ms', configKey: 'RATE_LIMIT_COOLDOWN_JITTER_MS', type: 'int' },
+        { flag: '--rate-limit-cooldown-max-ms', configKey: 'RATE_LIMIT_COOLDOWN_MAX_MS', type: 'int' },
         { flag: '--cron-near-minutes',    configKey: 'CRON_NEAR_MINUTES',      type: 'int' },
         { flag: '--cron-refresh-token',   configKey: 'CRON_REFRESH_TOKEN',     type: 'bool' },
         { flag: '--provider-pools-file',  configKey: 'PROVIDER_POOLS_FILE_PATH', type: 'string' },
+        { flag: '--custom-models-file',   configKey: 'CUSTOM_MODELS_FILE_PATH', type: 'string' },
         { flag: '--max-error-count',      configKey: 'MAX_ERROR_COUNT',        type: 'int' },
         { flag: '--login-max-attempts',   configKey: 'LOGIN_MAX_ATTEMPTS',     type: 'int' },
         { flag: '--login-lockout-duration', configKey: 'LOGIN_LOCKOUT_DURATION', type: 'int' },
         { flag: '--login-min-interval',   configKey: 'LOGIN_MIN_INTERVAL',     type: 'int' },
         { flag: '--scheduled-health-check-enabled', configKey: 'SCHEDULE_HEALTH_CHECK_ENABLED', type: 'bool' },
         { flag: '--scheduled-health-check-interval', configKey: 'SCHEDULE_HEALTH_CHECK_INTERVAL', type: 'int' },
+        { flag: '--no-ui',                configKey: 'UI_ENABLED',            type: 'flag', value: false },
+        { flag: '--ui',                   configKey: 'UI_ENABLED',            type: 'bool' }
     ];
 
     // Parse command-line arguments using definitions
@@ -156,13 +185,16 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         const def = flagMap.get(args[i]);
         if (!def) continue;
 
-        if (i + 1 >= args.length) {
+        if (def.type !== 'flag' && i + 1 >= args.length) {
             logger.warn(`[Config Warning] ${def.flag} flag requires a value.`);
             continue;
         }
 
-        const rawValue = args[++i];
+        const rawValue = def.type === 'flag' ? null : args[++i];
         switch (def.type) {
+            case 'flag':
+                currentConfig[def.configKey] = def.value;
+                break;
             case 'string':
                 currentConfig[def.configKey] = rawValue;
                 break;
@@ -212,6 +244,23 @@ export async function initializeConfig(args = process.argv.slice(2), configFileP
         }
     } else {
         currentConfig.providerPools = {};
+    }
+
+    // 加载自定义模型配置
+    if (!currentConfig.CUSTOM_MODELS_FILE_PATH) {
+        currentConfig.CUSTOM_MODELS_FILE_PATH = 'configs/custom_models.json';
+    }
+    try {
+        if (fs.existsSync(currentConfig.CUSTOM_MODELS_FILE_PATH)) {
+            const customModelsData = fs.readFileSync(currentConfig.CUSTOM_MODELS_FILE_PATH, 'utf8');
+            currentConfig.customModels = JSON.parse(customModelsData);
+            logger.info(`[Config] Loaded custom models from ${currentConfig.CUSTOM_MODELS_FILE_PATH}`);
+        } else {
+            currentConfig.customModels = [];
+        }
+    } catch (error) {
+        logger.error(`[Config Error] Failed to load custom models from ${currentConfig.CUSTOM_MODELS_FILE_PATH}: ${error.message}`);
+        currentConfig.customModels = [];
     }
 
     // Set PROMPT_LOG_FILENAME based on the determined config
@@ -276,4 +325,3 @@ export async function getSystemPromptFileContent(filePath) {
 }
 
 export { ALL_MODEL_PROVIDERS };
-

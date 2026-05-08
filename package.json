@@ -1,4 +1,6 @@
 {
+  "name": "aiclient2api",
+  "version": "3.0.0",
   "type": "module",
   "dependencies": {
     "@anthropic-ai/tokenizer": "^0.0.4",
@@ -38,6 +40,8 @@
     "test:silent": "jest --silent",
     "test:unit": "node run-tests.js --unit",
     "test:integration": "node run-tests.js --integration",
-    "test:summary": "node test-summary.js"
+    "test:summary": "node test-summary.js",
+    "help": "node src/scripts/help.js",
+    "example:api": "node src/scripts/example-api.js"
   }
 }

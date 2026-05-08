@@ -1,4 +1,5 @@
 
+import { atomicWriteFile } from '../../utils/file-lock.js';
 import { OAuth2Client } from 'google-auth-library';
 import logger from '../../utils/logger.js';
 import * as http from 'http';
@@ -11,10 +12,10 @@ import * as readline from 'readline';
 import { v4 as uuidv4 } from 'uuid';
 import open from 'open';
 import { configureTLSSidecar } from '../../utils/proxy-utils.js';
-import { formatExpiryTime, isRetryableNetworkError, formatExpiryLog } from '../../utils/common.js';
+import { formatExpiryTime, isRetryableNetworkError, formatExpiryLog, getRetryAfterMs } from '../../utils/common.js';
 import { getProviderModels } from '../provider-models.js';
 import { handleGeminiAntigravityOAuth } from '../../auth/oauth-handlers.js';
-import { getProxyConfigForProvider, getGoogleAuthProxyConfig } from '../../utils/proxy-utils.js';
+import { getProxyConfigForProvider, getGoogleAuthProxyConfig, isTLSSidecarEnabledForProvider } from '../../utils/proxy-utils.js';
 import { cleanJsonSchemaProperties } from '../../converters/utils.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
 import { MODEL_PROVIDER } from '../../utils/common.js';
@@ -716,13 +717,18 @@ export class AntigravityApiService {
         // 检查是否需要使用代理
         const proxyConfig = getGoogleAuthProxyConfig(config, config.MODEL_PROVIDER || MODEL_PROVIDER.ANTIGRAVITY);
 
+        // 检查是否启用了 TLS Sidecar
+        const isTLSSidecarEnabled = isTLSSidecarEnabledForProvider(config, config.MODEL_PROVIDER || MODEL_PROVIDER.ANTIGRAVITY);
+
         // 配置 OAuth2Client 使用自定义的 HTTP agent
         const oauth2Options = {
             clientId: OAUTH_CLIENT_ID,
             clientSecret: OAUTH_CLIENT_SECRET,
         };
 
-        if (proxyConfig) {
+        if (isTLSSidecarEnabled) {
+            logger.info('[Antigravity] TLS Sidecar enabled, skipping proxy/agent configuration for OAuth2Client');
+        } else if (proxyConfig) {
             oauth2Options.transporterOptions = proxyConfig;
             logger.info('[Antigravity] Using proxy for OAuth2Client');
         } else {
@@ -916,7 +922,7 @@ export class AntigravityApiService {
      */
     async _saveCredentialsToFile(filePath, credentials) {
         try {
-            await fs.writeFile(filePath, JSON.stringify(credentials, null, 2));
+            await atomicWriteFile(filePath, JSON.stringify(credentials, null, 2), { mode: 0o600 });
             logger.info(`[Antigravity Auth] Credentials saved to ${filePath}`);
         } catch (error) {
             logger.error(`[Antigravity Auth] Failed to save credentials to ${filePath}: ${error.message}`);
@@ -952,6 +958,7 @@ export class AntigravityApiService {
             // Check if we already have a project ID from the response
             if (loadResponse.cloudaicompanionProject) {
                 logger.info(`[Antigravity] Discovered existing Project ID: ${loadResponse.cloudaicompanionProject}`);
+                this.projectId = loadResponse.cloudaicompanionProject;
                 // 获取可用模型
                 await this.fetchAvailableModels();
                 return loadResponse.cloudaicompanionProject;
@@ -985,6 +992,7 @@ export class AntigravityApiService {
 
             const discoveredProjectId = lroResponse.response?.cloudaicompanionProject?.id || initialProjectId;
             logger.info(`[Antigravity] Onboarded and discovered Project ID: ${discoveredProjectId}`);
+            this.projectId = discoveredProjectId;
             // 获取可用模型
             await this.fetchAvailableModels();
             return discoveredProjectId;
@@ -993,6 +1001,7 @@ export class AntigravityApiService {
             logger.info('[Antigravity] Falling back to generated Project ID as last resort...');
             const fallbackProjectId = generateProjectID();
             logger.info(`[Antigravity] Generated fallback Project ID: ${fallbackProjectId}`);
+            this.projectId = fallbackProjectId;
             // 获取可用模型
             await this.fetchAvailableModels();
             return fallbackProjectId;
@@ -1013,7 +1022,7 @@ export class AntigravityApiService {
                         'User-Agent': this.userAgent
                     },
                     responseType: 'json',
-                    body: JSON.stringify({})
+                    body: JSON.stringify(this.projectId ? { project: this.projectId } : {})
                 };
 
                 const res = await this.authClient.request(requestOptions);
@@ -1110,13 +1119,13 @@ export class AntigravityApiService {
             
             logger.error(`[Antigravity API] Error calling (Status: ${status}, Code: ${errorCode}):`, error.message);
 
-            if ((status === 400 || status === 401) && !isRetry) {
-                logger.info('[Antigravity API] Received 401/400. Triggering background refresh via PoolManager...');
+            if ((status === 401) && !isRetry) {
+                logger.info('[Antigravity API] Received 401 Unauthorized. Triggering background refresh via PoolManager...');
                 
                 // 标记当前凭证为不健康（会自动进入刷新队列）
                 const poolManager = getProviderPoolManager();
                 if (poolManager && this.uuid) {
-                    logger.info(`[Antigravity] Marking credential ${this.uuid} as needs refresh. Reason: 401/400 Unauthorized`);
+                    logger.info(`[Antigravity] Marking credential ${this.uuid} as needs refresh. Reason: 401 Unauthorized`);
                     poolManager.markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.ANTIGRAVITY, {
                         uuid: this.uuid
                     });
@@ -1130,12 +1139,17 @@ export class AntigravityApiService {
             }
 
             if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[Antigravity API] Received 429 with Retry-After: ${retryAfter}ms. Throwing to upper layer.`);
+                    throw error;
+                }
                 if (baseURLIndex + 1 < this.baseURLs.length) {
                     logger.info(`[Antigravity API] Rate limited on ${baseURL}. Trying next base URL...`);
                     return this.callApi(method, body, isRetry, retryCount, baseURLIndex + 1);
                 } else if (retryCount < maxRetries) {
                     const delay = baseDelay * Math.pow(2, retryCount);
-                    logger.info(`[Antigravity API] Rate limited. Retrying in ${delay}ms...`);
+                    logger.info(`[Antigravity API] Received 429 (Too Many Requests). No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return this.callApi(method, body, isRetry, retryCount + 1, 0);
                 }
@@ -1213,13 +1227,13 @@ export class AntigravityApiService {
             
             logger.error(`[Antigravity API] Error during stream (Status: ${status}, Code: ${errorCode}):`, error.message);
 
-            if ((status === 400 || status === 401) && !isRetry) {
-                logger.info('[Antigravity API] Received 401/400 during stream. Triggering background refresh via PoolManager...');
+            if ((status === 401) && !isRetry) {
+                logger.info('[Antigravity API] Received 401 Unauthorized during stream. Triggering background refresh via PoolManager...');
                 
                 // 标记当前凭证为不健康（会自动进入刷新队列）
                 const poolManager = getProviderPoolManager();
                 if (poolManager && this.uuid) {
-                    logger.info(`[Antigravity] Marking credential ${this.uuid} as needs refresh. Reason: 401/400 Unauthorized in stream`);
+                    logger.info(`[Antigravity] Marking credential ${this.uuid} as needs refresh. Reason: 401 Unauthorized in stream`);
                     poolManager.markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.ANTIGRAVITY, {
                         uuid: this.uuid
                     });
@@ -1233,13 +1247,18 @@ export class AntigravityApiService {
             }
 
             if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[Antigravity API] Received 429 with Retry-After: ${retryAfter}ms during stream. Throwing to upper layer.`);
+                    throw error;
+                }
                 if (baseURLIndex + 1 < this.baseURLs.length) {
                     logger.info(`[Antigravity API] Rate limited on ${baseURL}. Trying next base URL...`);
                     yield* this.streamApi(method, body, isRetry, retryCount, baseURLIndex + 1);
                     return;
                 } else if (retryCount < maxRetries) {
                     const delay = baseDelay * Math.pow(2, retryCount);
-                    logger.info(`[Antigravity API] Rate limited during stream. Retrying in ${delay}ms...`);
+                    logger.info(`[Antigravity API] Received 429 (Too Many Requests) during stream. No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     yield* this.streamApi(method, body, isRetry, retryCount + 1, 0);
                     return;
@@ -1307,6 +1326,7 @@ export class AntigravityApiService {
     }
 
     async generateContent(model, requestBody) {
+        if (!this.isInitialized) await this.initialize();
         logger.info(`[Antigravity Auth Token] Time until expiry: ${formatExpiryTime(this.authClient.credentials.expiry_date)}`);
 
         // 临时存储 monitorRequestId
@@ -1385,6 +1405,7 @@ export class AntigravityApiService {
     }
 
     async * generateContentStream(model, requestBody) {
+        if (!this.isInitialized) await this.initialize();
         logger.info(`[Antigravity Auth Token] Time until expiry: ${formatExpiryTime(this.authClient.credentials.expiry_date)}`);
 
         // 临时存储 monitorRequestId

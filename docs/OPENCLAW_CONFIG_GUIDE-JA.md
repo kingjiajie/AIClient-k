@@ -1,12 +1,12 @@
 # OpenClaw 設定ガイド
 
-OpenClaw で AIClient-2-API を使用するためのクイック設定ガイド。
+OpenClaw で AIClient2API を使用するためのクイック設定ガイド。
 
 ---
 
 ## 前提条件
 
-1. AIClient-2-API サービスを起動
+1. AIClient2API サービスを起動
 2. Web UI (`http://localhost:3000`) で少なくとも1つのプロバイダーを設定
 3. 設定ファイルから API Key を記録
 4. OpenClaw をインストール
@@ -195,7 +195,7 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "あなたの質問"
 ## よくある質問
 
 **Q: 接続に失敗しますか？**
-- AIClient-2-API サービスが実行中であることを確認
+- AIClient2API サービスが実行中であることを確認
 - Base URL が正しいか確認（OpenAI プロトコルには `/v1` サフィックスが必要）
 - `localhost` の代わりに `127.0.0.1` を使用してみる
 
@@ -204,10 +204,10 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "あなたの質問"
 - 環境変数 `AICLIENT2API_KEY` が設定されているか確認
 
 **Q: モデルが利用できない？**
-- AIClient-2-API Web UI でプロバイダーが設定されているか確認
+- AIClient2API Web UI でプロバイダーが設定されているか確認
 - `openclaw gateway restart` を実行してゲートウェイを再起動
 - `openclaw models list` を実行してモデルリストを確認
 
 ---
 
-詳細については、[AIClient-2-API ドキュメント](../README-JA.md) を参照してください
+詳細については、[AIClient2API ドキュメント](../README-JA.md) を参照してください

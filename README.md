@@ -2,7 +2,7 @@
 
 <img src="src/img/logo-mid.webp" alt="logo"  style="width: 128px; height: 128px;margin-bottom: 3px;">
 
-# AIClient-2-API 🚀
+# AIClient2API（A2）🚀
 
 **A powerful proxy that can unify the requests of various client-only large model APIs (Gemini CLI, Antigravity, Codex, Grok, Kiro ...), simulate requests, and encapsulate them into a local OpenAI-compatible interface.**
 
@@ -24,7 +24,12 @@
 
 </div>
 
+---
+
+
 ## 💎 Sponsors
+
+*Sponsors are listed in chronological order; all are recommended for registration and use.*
 
 <table width="100%">
   <tr>
@@ -37,6 +42,7 @@
       PackyCode is a reliable and efficient API relay service provider, offering relay services for Claude Code, Codex, Gemini, and more. PackyCode provides special discounts for our software users: <a href="https://www.packyapi.com/register?aff=AIClient2API">register using this link</a> and enter the <strong>AIClient2API</strong> promo code during recharge to get <strong>10% off</strong>.
     </td>
   </tr>
+<!--
   <tr>
     <td width="25%" align="center" valign="middle">
       <a href="https://www.aicodemirror.com/register?invitecode=5BUE62">
@@ -44,9 +50,33 @@
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
-      Thanks to AICodeMirror for sponsoring this project! AICodeMirror provides official high-stability relay services for Claude Code / Codex / Gemini CLI, with enterprise-grade concurrency, fast invoicing, and 24/7 dedicated technical support. Claude Code / Codex / Gemini official channels at 38% / 2% / 9% of original price, with extra discounts on top-ups! AICodeMirror offers special benefits for AIClient-2-API users: <a href="https://www.aicodemirror.com/register?invitecode=5BUE62">register via this link</a> to enjoy <strong>20% off</strong> your first top-up, and enterprise customers can get up to 25% off!
+      Thanks to AICodeMirror for sponsoring this project! AICodeMirror provides official high-stability relay services for Claude Code / Codex / Gemini CLI, with enterprise-grade concurrency, fast invoicing, and 24/7 dedicated technical support. Claude Code / Codex / Gemini official channels at 38% / 2% / 9% of original price, with extra discounts on top-ups! AICodeMirror offers special benefits for AIClient2API users: <a href="https://www.aicodemirror.com/register?invitecode=5BUE62">register via this link</a> to enjoy <strong>20% off</strong> your first top-up, and enterprise customers can get up to 25% off!
     </td>
   </tr>
+-->
+<!--
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://poixe.com/i/ebmvga">
+        <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      Poixe AI provides reliable LLM API services. You can leverage the platform's API endpoints to seamlessly build AI-powered products. Additionally, you can become a vendor by providing AI API resources to the platform and earn revenue. <a href="https://poixe.com/i/ebmvga">Register through the exclusive AIClient2API referral link</a> and receive a bonus of <strong>$5 USD</strong> on your first top-up.
+    </td>
+  </tr>
+-->
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://visioncoder.com">
+        <img src="static/visioncoder.png" alt="VisionCoder Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      Thanks to VisionCoder for supporting this project. VisionCoder Developer Platform is a reliable and efficient API relay service provider, offering access to mainstream AI models such as Claude Code, Codex, and Gemini. It helps developers and teams integrate AI capabilities more easily and improve productivity. VisionCoder is also offering our users a limited-time <a href="https://visioncoder.com">Token Plan</a> promotion: <strong>buy 1 month and get 1 month free</strong>.
+    </td>
+  </tr>
+<!--
   <tr>
     <td width="25%" align="center" valign="middle">
       <a href="https://www.lingtrue.com/register?aff=MP34">
@@ -57,16 +87,7 @@
       Thanks to LingtrueAPI for its sponsorship of this project! LingtrueAPI is a global large-model API intermediary service platform that offers API calling services for various models such as Claude opus 4.6, GPT 5.4, and Gemini 3.1 pro. It is committed to enabling users to connect to global AI capabilities at low cost and with high stability, maximizing production efficiency. LingtrueAPI provides special discounts for users of this software: <a href="https://www.lingtrue.com/register?aff=MP34">register using this link</a> and enter the <strong>LingtrueAPI</strong> promo code when making the first recharge to enjoy a <strong>10% discount</strong>.
     </td>
   </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
-      <a href="https://poixe.com/i/ebmvga">
-        <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      Poixe AI provides reliable LLM API services. You can leverage the platform's API endpoints to seamlessly build AI-powered products. Additionally, you can become a vendor by providing AI API resources to the platform and earn revenue. <a href="https://poixe.com/i/ebmvga">Register through the exclusive AIClient-2-API referral link</a> and receive a bonus of <strong>$5 USD</strong> on your first top-up.
-    </td>
-  </tr>
+-->
   <tr>
     <td width="25%" align="center" valign="middle">
       <img src="static/wechat.png" alt="Sponsor Contact" width="150">
@@ -82,7 +103,7 @@
 
 ## 🚀 Overview
 
-`AIClient2API` is an API proxy service that breaks through client limitations, converting free large models originally restricted to client use only (such as Gemini, Antigravity, Codex, Grok, Kiro) into standard OpenAI-compatible interfaces that can be called by any application. Built on Node.js, it supports intelligent conversion between OpenAI, Claude, and Gemini protocols, enabling tools like Cherry-Studio, NextChat, and Cline to freely use advanced models such as Claude Opus 4.5, Gemini 3.0 Pro, and Qwen3 Coder Plus at scale. The project adopts a modular architecture based on strategy and adapter patterns, with built-in account pool management, intelligent polling, automatic failover, and health check mechanisms, ensuring 99.9% service availability.
+`AIClient2API` is an API proxy service that breaks through client limitations, converting free large models originally restricted to client use only (such as Gemini, Antigravity, Codex, Grok, Kiro) into standard OpenAI-compatible interfaces that can be called by any application. Built on Node.js, it supports intelligent conversion between OpenAI, Claude, and Gemini protocols, enabling tools like Cherry-Studio, NextChat, and Cline to freely use advanced models such as Claude Opus 4.5 and Gemini 3.0 Pro at scale. The project adopts a modular architecture based on strategy and adapter patterns, with built-in account pool management, intelligent polling, automatic failover, and health check mechanisms, ensuring 99.9% service availability.
 
 > [!NOTE]
 > **🎉 Important Milestone**
@@ -94,6 +115,8 @@
 > <details>
 > <summary>Click to expand detailed version history</summary>
 > 
+> - **2026.05.04 (v3.0.0)** - **Milestone Update: Deep AI Integration & Self-Discovery Architecture**. Added automated Skill guides and remote `/api/help`, `/api/example` endpoints, enabling AI agents to seamlessly understand and operate 50+ full API endpoints; achieved full unification of CLI and REST API output results with enhanced structured JSON support.
+> - **2026.04.29** - Comprehensive support for OpenAI standard Image Generation (`/v1/images/generations`) and Image Editing (`/v1/images/edits`) interfaces. Supports automatic conversion from OpenAI format to native image generation protocols of various models, fully compatible with provider pool polling and retry mechanisms, significantly improving the stability of multimodal creation.
 > - **2026.03.02** - Added Grok protocol support, supporting access to xAI Grok series models (Grok 3/4) via Cookie/SSO, supporting multimodal input, image/video generation, automatic token refresh and streaming output
 > - **2026.01.26** - Added Codex protocol support: supports OpenAI Codex OAuth authorization access
 > - **2026.01.25** - Enhanced AI Monitor plugin: supports monitoring request parameters and responses before and after AI protocol conversion. Optimized log management: unified log format, visual configuration
@@ -106,7 +129,6 @@
 > - **2025.11.11** - Added Web UI management console, supporting real-time configuration management and health status monitoring
 > - **2025.11.06** - Added support for Gemini 3 Preview, enhanced model compatibility and performance optimization
 > - **2025.10.18** - Kiro open registration, new accounts get 500 credits, full support for Claude Sonnet 4.5
-> - **2025.09.01** - Integrated Qwen Code CLI, added `qwen3-coder-plus` model support
 > - **2025.08.29** - Released account pool management feature, supporting multi-account polling, intelligent failover, and automatic degradation strategies
 >   - Configuration: Add `PROVIDER_POOLS_FILE_PATH` parameter in `configs/config.json`
 >   - Reference configuration: [provider_pools.json](./configs/provider_pools.json.example)
@@ -119,6 +141,22 @@
 
 ## 💡 Core Advantages
 
+### 🤖 AI-First, Agent Interaction Support
+
+> **AI-First Design**: This project natively supports efficient interaction with mainstream AI Agents such as OpenClaw, Hermes, and Claude Code.
+>
+> **💡 Quick Command**: You can tell the AI this sentence directly, and it will automatically master all usage of this project:
+>
+> - **Remote Deployment**:
+>   ```text
+>   Please load and learn the Skill in https://raw.githubusercontent.com/justlovemaki/AIClient2API/main/docs/skills/aiclient-cli-usage.md (Service Address: your actual domain or IP, Login Password: your actual password) to master all usage of AIClient2API.
+>   ```
+> - **Local Mode**:
+>   If you are running the AI agent directly in your local environment, just send:
+>   ```text
+>   Please load and learn the Skill in docs/skills/aiclient-cli-usage.md to help me start, configure, and manage the AIClient2API service locally.
+>   ```
+
 ### 🎯 Unified Access, One-Stop Management
 *   **Multi-Model Unified Interface**: Through standard OpenAI-compatible protocol, configure once to access mainstream large models including Gemini, Claude, Grok, Codex, Kimi K2, MiniMax M2
 *   **Flexible Switching Mechanism**: Path routing, support dynamic model switching via startup parameters or environment variables to meet different scenario requirements
@@ -128,7 +166,7 @@
 ### 🚀 Break Through Limitations, Improve Efficiency
 *   **Bypass Official Restrictions**: Utilize OAuth authorization mechanism to effectively break through rate and quota limits of services like Gemini, Antigravity
 *   **TLS Fingerprint Bypass**: Built-in TLS Sidecar (Go uTLS) to simulate browser features, effectively bypassing Cloudflare 403 blocks for services like Grok
-*   **Free Advanced Models**: Use Claude Opus 4.5 for free via Kiro API mode, use Qwen3 Coder Plus via Qwen OAuth mode, reducing usage costs
+*   **Free Advanced Models**: Use Claude Opus 4.5 for free via Kiro API mode, reducing usage costs
 *   **Intelligent Account Pool Scheduling**: Support multi-account polling, automatic failover, and configuration degradation, ensuring 99.9% service availability
 
 ### 🛡️ Secure and Controllable, Data Transparent
@@ -164,7 +202,7 @@
 
 ### 🚀 Quick Start
 
-The most recommended way to use AIClient-2-API is to start it through an automated script and configure it visually directly in the **Web UI console**.
+The most recommended way to use AIClient2API is to start it through an automated script and configure it visually directly in the **Web UI console**.
 
 #### 🐳 Docker Quick Start (Recommended)
 
@@ -198,12 +236,18 @@ To build from source instead of using the pre-built image, edit `docker-compose.
 *   **Linux/macOS**: `chmod +x install-and-run.sh && ./install-and-run.sh`
 *   **Windows**: Double-click `install-and-run.bat`
 
-> **💡 If the script fails, you can try manually installing dependencies and starting:**
+> **💡 Manual installation and startup (supports custom parameters):**
 > ```bash
 > npm install
+> # Default startup
 > npm start
+> # Show help information
+> npm run help
+> # Show API calling examples
+> npm run example:api
+> # Backend-only mode (disable frontend management UI)
+> npm start -- --no-ui
 > ```
-
 
 #### 2. Access the console
 After the server starts, open your browser and visit:
@@ -217,7 +261,7 @@ Go to the **"Configuration"** page, you can:
 *   ✅ Switch default model providers in real-time
 *   ✅ Monitor health status and real-time request logs
 
-#### 4. Local Environment Preparation (Non-Docker Users)
+#### 4. Local Environment Preparation (Non-Docker Users)s
 If you are running directly on your local machine (via script or Node.js) and need to bypass TLS detection for services like Grok, please ensure:
 *   ✅ **Install Go Language**: Go to the [official Go website](https://go.dev/) to download and install (1.20+).
 *   ✅ **Manually Compile Sidecar**: Execute the following command to compile the TLS proxy component:
@@ -261,7 +305,7 @@ A functional Web management interface, including:
 
 **📊 Dashboard**: System overview, interactive routing examples, client configuration guide
 
-**⚙️ Configuration**: Real-time parameter modification, supporting all providers (Gemini, Antigravity, OpenAI, Claude, Kiro, Qwen), including advanced settings and file uploads
+**⚙️ Configuration**: Real-time parameter modification, supporting all providers (Gemini, Antigravity, OpenAI, Claude, Kiro), including advanced settings and file uploads
 
 **🔗 Provider Pools**: Monitor active connections, provider health statistics, enable/disable management
 
@@ -281,7 +325,6 @@ Seamlessly support the following latest large models, just configure the corresp
 *   **Grok 3 / Grok 4** - xAI's flagship models, now supported via Grok Cookie/SSO, supporting thinking models, image generation, and video generation
 *   **Claude 4.5 Opus** - Anthropic's strongest model ever, now supported via Kiro, Antigravity
 *   **Gemini 3 Pro** - Google's next-generation architecture preview, now supported via Gemini, Antigravity
-*   **Qwen3 Coder Plus** - Alibaba Tongyi Qianwen's latest code-specific model, now supported via Qwen Code
 *   **Kimi K2 / MiniMax M2** - Synchronized support for top domestic flagship models, now supported via custom OpenAI, Claude
 
 ---
@@ -295,8 +338,8 @@ Seamlessly support the following latest large models, just configure the corresp
 
 #### 🌐 Web UI Quick Authorization (Recommended)
 In the Web UI management interface, you can complete authorization configuration rapidly:
-1. **Generate Authorization**: On the **"Provider Pools"** page or **"Configuration"** page, click the **"Generate Authorization"** button in the upper right corner of the corresponding provider (e.g., Gemini, Qwen).
-2. **Scan/Login**: An authorization dialog will pop up, you can click **"Open in Browser"** for login verification. For Qwen, just complete the web login; for Gemini and Antigravity, complete the Google account authorization.
+1. **Generate Authorization**: On the **"Provider Pools"** page or **"Configuration"** page, click the **"Generate Authorization"** button in the upper right corner of the corresponding provider (e.g., Gemini).
+2. **Scan/Login**: An authorization dialog will pop up, you can click **"Open in Browser"** for login verification. For Gemini and Antigravity, complete the Google account authorization.
 3. **Auto-Save**: After successful authorization, the system will automatically obtain credentials and save them to the corresponding directory in `configs/`. You can see the newly generated credentials on the **"Config Files"** page.
 4. **Visual Management**: You can upload or delete credentials at any time in the Web UI, or use the **"Quick Associate"** function to bind existing credential files to providers with one click.
 
@@ -310,16 +353,6 @@ In the Web UI management interface, you can complete authorization configuration
 2. **Pro Member**: Antigravity is temporarily open to Pro members, you need to purchase a Pro membership first.
 3. **Organization Account**: Organization accounts require separate authorization, contact the administrator to obtain authorization.
 
-#### Qwen Code OAuth Configuration
-1. **First Authorization**: After configuring the Qwen service, the system will automatically open the authorization page in the browser
-2. **Recommended Parameters**: Use official default parameters for best results
-   ```json
-   {
-     "temperature": 0,
-     "top_p": 1
-   }
-   ```
-
 #### Kiro API Configuration
 1. **Environment Preparation**: [Download and install Kiro client](https://kiro.dev/pricing/)
 2. **Complete Authorization**: Log in to your account in the client to generate `kiro-auth-token.json` credential file
@@ -327,7 +360,7 @@ In the Web UI management interface, you can complete authorization configuration
 4. **Important Notice**: Kiro service usage policy has been updated, please visit the official website for the latest usage restrictions and terms
 
 #### Kiro Extended Thinking (Claude Models)
-AIClient-2-API supports Kiro extended thinking when using Claude-compatible requests (`/v1/messages`) or OpenAI-compatible requests (`/v1/chat/completions`) routed to `claude-kiro-oauth`.
+AIClient2API supports Kiro extended thinking when using Claude-compatible requests (`/v1/messages`) or OpenAI-compatible requests (`/v1/chat/completions`) routed to `claude-kiro-oauth`.
 
 **Claude-compatible (`/v1/messages`)**:
 ```bash
@@ -400,7 +433,6 @@ Default storage locations for authorization credential files of each service:
 |------|---------|------|
 | **Gemini** | `~/.gemini/oauth_creds.json` | OAuth authentication credentials |
 | **Kiro** | `~/.aws/sso/cache/kiro-auth-token.json` | Kiro authentication token |
-| **Qwen** | `~/.qwen/oauth_creds.json` | Qwen OAuth credentials |
 | **Antigravity** | `~/.antigravity/oauth_creds.json` | Antigravity OAuth credentials (supports Claude 4.5 Opus) |
 | **Codex** | `~/.codex/oauth_creds.json` | Codex OAuth credentials |
 
@@ -441,10 +473,11 @@ This project supports flexible proxy configuration, allowing you to configure a 
         "gemini-cli-oauth",
         "gemini-antigravity",
         "claude-kiro-oauth",
-        "grok-custom"
+        "grok-web"
       ]
-}
-   ```
+    }
+    ```
+
 
 3. **Provider-Specific Proxied Endpoints**: Some providers (like OpenAI, Claude) support configuring proxied API endpoints
 
@@ -628,6 +661,7 @@ Or modify the port configuration in `configs/config.json` to use a different por
 **Solutions**:
 - **Configure Account Pool**: Add multiple accounts to `provider_pools.json`, enable polling mechanism
 - **Configure Fallback**: Configure `providerFallbackChain` in `config.json` for cross-type degradation
+- **Enable 429 Cooldown**: Set `RATE_LIMIT_COOLDOWN_ENABLED` to `true` and tune `RATE_LIMIT_COOLDOWN_MS` so rate-limited accounts temporarily leave the pool and recover automatically
 - **Reduce Request Frequency**: Appropriately increase request intervals to avoid triggering rate limits
 - **Wait for Quota Reset**: Free quotas usually reset daily or per minute
 
@@ -714,6 +748,25 @@ Or modify the port configuration in `configs/config.json` to use a different por
 - **Check Request Frequency**: Some providers have strict request frequency limits; reduce request frequency and retry
 - **View Provider Documentation**: Visit the official documentation of the corresponding provider to understand specific access restrictions and requirements
 
+### 14. Why should I enable "OAuth Token Auto-Refresh"?
+
+**Problem Description**: Unsure if token auto-refresh is necessary.
+
+**Solution**:
+OAuth tokens (e.g., Gemini, Antigravity, Codex) typically have a limited lifespan (e.g., 1 hour).
+- **With it enabled**: The system automatically checks and refreshes tokens before they expire in the background. This ensures 24/7 stable API service and avoids `401 Unauthorized` or `403 Forbidden` errors due to expired tokens.
+- **Without it**: Once a token expires, the system cannot automatically obtain a new one, causing API requests to fail until you manually re-authorize.
+
+### 15. What is the impact of not enabling "Preload Model Providers" on token maintenance?
+
+**Problem Description**: Confusion about the "Preload Model Providers" configuration and its relation to token refresh.
+
+**Solution**:
+The system only performs auto-refresh tasks for providers that are **loaded into the active pool**.
+- **Impact**: If a provider is not checked as a "Preload Model Provider" in the configuration, it won't be initialized when the system starts. Since it's not in the pool, the background refresh task will **not** process its token.
+- **Consequence**: If you don't use that provider for a long time, its token will expire silently. When you eventually call it via a specific route, the request will fail due to the expired token.
+- **Recommendation**: Always check providers you intend to use frequently and need to keep active in the "Preload Model Providers" list.
+
 </details>
 
 ---
@@ -728,7 +781,7 @@ The development of this project was greatly inspired by the official Google Gemi
 
 ### Contributor List
 
-Thanks to all the developers who contributed to the AIClient-2-API project:
+Thanks to all the developers who contributed to the AIClient2API project:
 
 [![Contributors](https://contrib.rocks/image?repo=justlovemaki/AIClient-2-API)](https://github.com/justlovemaki/AIClient-2-API/graphs/contributors)
 
@@ -743,7 +796,7 @@ Thanks to all the developers who contributed to the AIClient-2-API project:
 ## ⚠️ Disclaimer
 
 ### Usage Risk Warning
-This project (AIClient-2-API) is for learning and research purposes only. Users assume all risks when using this project. The author is not responsible for any direct, indirect, or consequential losses resulting from the use of this project.
+This project (AIClient2API) is for learning and research purposes only. Users assume all risks when using this project. The author is not responsible for any direct, indirect, or consequential losses resulting from the use of this project.
 
 ### Third-Party Service Responsibility Statement
 This project is an API proxy tool and does not provide any AI model services. All AI model services are provided by their respective third-party providers (such as Google, OpenAI, Anthropic, etc.). Users should comply with the terms of service and policies of each third-party service when accessing them through this project. The author is not responsible for the availability, quality, security, or legality of third-party services.

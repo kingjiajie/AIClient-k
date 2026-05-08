@@ -1,12 +1,12 @@
 # OpenClaw 配置指南
 
-在 OpenClaw 中使用 AIClient-2-API 的快速配置指南。
+在 OpenClaw 中使用 AIClient2API 的快速配置指南。
 
 ---
 
 ## 前置准备
 
-1. 启动 AIClient-2-API 服务
+1. 启动 AIClient2API 服务
 2. 在 Web UI (`http://localhost:3000`) 配置至少一个提供商
 3. 记录配置文件中的 API Key
 4. 安装 OpenClaw
@@ -195,7 +195,7 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "你的问题"
 ## 常见问题
 
 **Q: 连接失败？**
-- 确认 AIClient-2-API 服务运行中
+- 确认 AIClient2API 服务运行中
 - 检查 Base URL 是否正确（OpenAI 协议需要 `/v1` 后缀）
 - 尝试使用 `127.0.0.1` 替代 `localhost`
 
@@ -204,10 +204,10 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "你的问题"
 - 确认环境变量 `AICLIENT2API_KEY` 已设置
 
 **Q: 模型不可用？**
-- 在 AIClient-2-API Web UI 确认已配置对应提供商
+- 在 AIClient2API Web UI 确认已配置对应提供商
 - 运行 `openclaw gateway restart` 重启网关
 - 运行 `openclaw models list` 验证模型列表
 
 ---
 
-更多信息请参考 [AIClient-2-API 文档](../README-ZH.md)
+更多信息请参考 [AIClient2API 文档](../README-ZH.md)

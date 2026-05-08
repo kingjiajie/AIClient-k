@@ -111,6 +111,7 @@ import { HEALTH_CHECK } from '../utils/constants.js';
  * --cron-near-minutes <number>       OAuth 令牌刷新任务计划的间隔时间（分钟）。 / Interval for OAuth token refresh task in minutes (default: 15)
  * --cron-refresh-token <boolean>     是否开启 OAuth 令牌自动刷新任务 / Whether to enable automatic OAuth token refresh task (default: true)
  * --provider-pools-file <path>       提供商号池配置文件路径 / Path to provider pools configuration file (default: null)
+ * --no-ui                           禁用前端管理界面 / Disable frontend management UI
  *
  */
 
@@ -179,6 +180,16 @@ function setupWorkerCommunication() {
  */
 async function gracefulShutdown() {
     logger.info('[Server] Initiating graceful shutdown...');
+
+    // 停止所有插件
+    try {
+        const pluginManager = getPluginManager();
+        if (pluginManager) {
+            await pluginManager.destroyAll();
+        }
+    } catch (err) {
+        logger.error('[Server] Error destroying plugins:', err.message);
+    }
 
     // 停止 TLS sidecar
     try {
@@ -325,8 +336,8 @@ async function startServer() {
         logger.info(`  • Health check: /health`);
         logger.info(`  • UI Management Console: http://${CONFIG.HOST}:${CONFIG.SERVER_PORT}/`);
 
-        // Auto-open browser to UI (only if host is 0.0.0.0 or 127.0.0.1)
-        // if (CONFIG.HOST === '0.0.0.0' || CONFIG.HOST === '127.0.0.1') {
+        // Auto-open browser to UI (only if host is 0.0.0.0 or 127.0.0.1 and UI_ENABLED is true)
+        if (CONFIG.UI_ENABLED) {
             try {
                 const open = (await import('open')).default;
                 // 作为子进程启动时，需要更长的延迟确保服务完全就绪
@@ -347,7 +358,9 @@ async function startServer() {
             } catch (err) {
                 logger.info(`[UI] Login page available at: http://${CONFIG.HOST}:${CONFIG.SERVER_PORT}/login.html`);
             }
-        // }
+        } else {
+            logger.info(`[UI] UI is disabled.`);
+        }
 
         if (CONFIG.CRON_REFRESH_TOKEN) {
             logger.info(`  • Cron Near Minutes: ${CONFIG.CRON_NEAR_MINUTES}`);

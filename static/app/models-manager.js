@@ -4,6 +4,7 @@
  */
 
 import { t } from './i18n.js';
+import { apiClient } from './auth.js';
 
 // 模型数据缓存
 let modelsCache = null;
@@ -33,17 +34,7 @@ async function fetchProviderModels() {
     }
     
     try {
-        const response = await fetch('/api/provider-models', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        modelsCache = await response.json();
+        modelsCache = await apiClient.get('/provider-models');
         return modelsCache;
     } catch (error) {
         console.error('[Models Manager] Failed to fetch provider models:', error);
@@ -200,7 +191,7 @@ function getProviderDisplayName(providerType) {
         'openai-qwen-oauth': 'Qwen (OAuth)',
         'openai-iflow': 'iFlow',
         'openai-codex-oauth': 'OpenAI Codex (OAuth)',
-        'grok-custom': 'Grok Reverse'
+        'grok-web': 'Grok Web'
     };
 
     if (displayNames[providerType]) {

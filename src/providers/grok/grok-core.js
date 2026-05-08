@@ -3,9 +3,9 @@ import logger from '../../utils/logger.js';
 import * as http from 'http';
 import * as https from 'https';
 import { v4 as uuidv4 } from 'uuid';
-import { MODEL_PROTOCOL_PREFIX, isRetryableNetworkError } from '../../utils/common.js';
+import { MODEL_PROTOCOL_PREFIX, isRetryableNetworkError, getRetryAfterMs } from '../../utils/common.js';
 import { getProviderModels } from '../provider-models.js';
-import { configureAxiosProxy, configureTLSSidecar } from '../../utils/proxy-utils.js';
+import { configureAxiosProxy, configureTLSSidecar, isTLSSidecarEnabledForProvider } from '../../utils/proxy-utils.js';
 import { MODEL_PROVIDER } from '../../utils/common.js';
 import { ConverterFactory } from '../../converters/ConverterFactory.js';
 import * as readline from 'readline';
@@ -73,7 +73,8 @@ function attachGrokUsageEstimatePayload(collected, requestBody) {
     const promptText = requestBody.message || "";
     const toolsJson = requestBody.tools && Array.isArray(requestBody.tools) && requestBody.tools.length
         ? JSON.stringify(requestBody.tools) : "";
-    collected._grokUsageEstimatePayload = { promptText, toolsJson };
+    const includeUsage = requestBody.stream_options?.include_usage === true;
+    collected._grokUsageEstimatePayload = { promptText, toolsJson, includeUsage };
 }
 
 export class GrokApiService {
@@ -203,7 +204,7 @@ export class GrokApiService {
     }
 
     _applySidecar(axiosConfig) {
-        return configureTLSSidecar(axiosConfig, this.config, this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_CUSTOM);
+        return configureTLSSidecar(axiosConfig, this.config, this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_WEB);
     }
 
     /**
@@ -229,19 +230,26 @@ export class GrokApiService {
             ...otherOptions
         } = options;
 
+        // 检查是否启用了 TLS Sidecar
+        const isTLSSidecarEnabled = isTLSSidecarEnabledForProvider(this.config, this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_WEB);
+
         const axiosConfig = { 
             method, 
             url, 
             headers, 
             data, 
-            httpAgent, 
-            httpsAgent, 
             timeout,
             ...otherOptions
         };
         if (responseType) axiosConfig.responseType = responseType;
 
-        configureAxiosProxy(axiosConfig, this.config, this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_CUSTOM);
+        // 如果未启用 TLS Sidecar，则配置 httpAgent 和 httpsAgent
+        if (!isTLSSidecarEnabled) {
+            axiosConfig.httpAgent = httpAgent;
+            axiosConfig.httpsAgent = httpsAgent;
+            configureAxiosProxy(axiosConfig, this.config, this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_WEB);
+        }
+        
         this._applySidecar(axiosConfig);
 
         return await axios(axiosConfig);
@@ -336,8 +344,9 @@ export class GrokApiService {
             // await this.getUsageLimits(); return Promise.resolve();
             const poolManager = getProviderPoolManager();
             if (poolManager && this.uuid) {
-                poolManager.resetProviderRefreshStatus(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_CUSTOM, this.uuid);
+                poolManager.resetProviderRefreshStatus(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_WEB, this.uuid);
             }
+            return true;
         } catch (error) {
             logger.error('[Grok] Failed to initialize authentication:', error);
             throw new Error(`Failed to refreshToken.`);
@@ -932,6 +941,11 @@ export class GrokApiService {
     }
 
     async generateContent(model, requestBody) {
+        if (requestBody._monitorRequestId) { 
+            this.config._monitorRequestId = requestBody._monitorRequestId; 
+            delete requestBody._monitorRequestId; 
+        }
+        
         logger.info(`[Grok] Starting generateContent (unified processing)`);
         
         const n = parseInt(requestBody.n || 1);
@@ -1245,7 +1259,9 @@ export class GrokApiService {
                 }
             }
         }
-        yield { result: { response: { isDone: true, responseId } } };
+        const doneResult = { response: { isDone: true, responseId } };
+        attachGrokUsageEstimatePayload(doneResult, requestBody);
+        yield { result: doneResult };
     }
 
     async uploadFile(fileInput) {
@@ -1281,7 +1297,7 @@ export class GrokApiService {
         if (requestBody._requestBaseUrl) delete requestBody._requestBaseUrl;
 
         if (this.isExpiryDateNear() && getProviderPoolManager() && this.uuid) {
-            getProviderPoolManager().markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_CUSTOM, { uuid: this.uuid });
+            getProviderPoolManager().markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GROK_WEB, { uuid: this.uuid });
         }
 
         const rawModel = typeof model === 'string' ? model : '';
@@ -1338,7 +1354,8 @@ export class GrokApiService {
                 maxRedirects: 0
             });
             const rl = readline.createInterface({ input: response.data, terminal: false });
-            let lastResponseId = payload.responseMetadata?.requestModelDetails?.modelId || "final";
+            const fallbackResponseId = uuidv4();
+            let lastResponseId = fallbackResponseId;
             let grokStreamUsagePayloadAttached = false;
 
             for await (const line of rl) {
@@ -1354,6 +1371,9 @@ export class GrokApiService {
                             grokStreamUsagePayloadAttached = true;
                         }
                         const resp = json.result.response;
+                        if (!resp.responseId) {
+                            resp.responseId = lastResponseId;
+                        }
                         resp._requestBaseUrl = reqBaseUrl;
                         resp._uuid = this.uuid;
 
@@ -1367,7 +1387,7 @@ export class GrokApiService {
                             resp.isThinking = false;
                             delete resp.messageStepId;
                         }
-
+                        
                         // 1. 处理 cardAttachment (根据最新指令，若是图片则不处理)
                         if (resp.cardAttachment) {
                             try {
@@ -1443,7 +1463,9 @@ export class GrokApiService {
                 }
                 this._grokLastStreamJsonForDebug = null;
             }
-            yield { result: { response: { isDone: true, responseId: lastResponseId, _requestBaseUrl: reqBaseUrl, _uuid: this.uuid } } };
+            const doneResult = { response: { isDone: true, responseId: lastResponseId, _requestBaseUrl: reqBaseUrl, _uuid: this.uuid } };
+            attachGrokUsageEstimatePayload(doneResult, requestBody);
+            yield { result: doneResult };
         } catch (error) {
             const { status, errorCode, errorMessage, isNetworkError } = this.classifyApiError(error);
             const canRetryInRequest = !hasYieldedData && retryCount < maxRetries;
@@ -1460,12 +1482,19 @@ export class GrokApiService {
                 }
             }
 
-            if (status === 429 && canRetryInRequest) {
-                const delay = baseDelay * Math.pow(2, retryCount);
-                logger.info(`[Grok API] Received 429 during stream. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                yield* this.generateContentStream(model, requestBody, retryCount + 1);
-                return;
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[Grok API] Received 429 with Retry-After: ${retryAfter}ms during stream. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (canRetryInRequest) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[Grok API] Received 429 (Too Many Requests) during stream. No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    yield* this.generateContentStream(model, requestBody, retryCount + 1);
+                    return;
+                }
             }
 
             if (status >= 500 && status < 600 && canRetryInRequest) {

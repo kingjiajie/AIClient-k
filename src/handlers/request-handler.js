@@ -2,6 +2,7 @@ import deepmerge from 'deepmerge';
 import logger from '../utils/logger.js';
 import { handleError, getClientIp } from '../utils/common.js';
 import { handleUIApiRequests, serveStaticFiles } from '../services/ui-manager.js';
+import { isUIPath, isUIApiPath } from '../utils/ui-utils.js';
 import { handleAPIRequests } from '../services/api-manager.js';
 import { getApiService, getProviderStatus } from '../services/service-manager.js';
 import { getProviderPoolManager } from '../services/service-manager.js';
@@ -54,7 +55,7 @@ export function createRequestHandler(config, providerPoolManager) {
         return logger.runWithContext(requestId, async () => {
             // Deep copy the config for each request to allow dynamic modification
             const currentConfig = deepmerge({}, config);
-            currentConfig._pluginRequestId = requestId;
+            currentConfig._monitorRequestId = requestId;
             
             // 计算当前请求的基础 URL
             const protocol = req.socket.encrypted || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
@@ -83,27 +84,43 @@ export function createRequestHandler(config, providerPoolManager) {
                 // 检查是否是插件静态文件
                 const pluginManager = getPluginManager();
                 const isPluginStatic = pluginManager.isPluginStaticPath(path);
-                const pluginStaticOwner = isPluginStatic ? pluginManager.getPluginByStaticPath(path) : null;
-                if (pluginStaticOwner && !pluginStaticOwner._enabled) {
-                    res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-                    res.end(JSON.stringify({
-                        success: false,
-                        error: {
-                            message: `插件未启用：${pluginStaticOwner.name}`,
-                            code: 'PLUGIN_DISABLED'
-                        }
-                    }));
-                    return;
+                
+                // 如果 UI 已禁用，拦截所有 UI 相关的静态资源请求
+                const _isUIPath = isUIPath(path);
+                
+                if (!currentConfig.UI_ENABLED) {
+                    if (_isUIPath || isPluginStatic) {
+                        handleError(res, { status: 404, message: 'UI static files are disabled' }, currentConfig.MODEL_PROVIDER, null, req);
+                        return;
+                    }
                 }
-                if (path.startsWith('/static/') || path === '/' || path === '/favicon.ico' || path === '/index.html' || path.startsWith('/app/') || path.startsWith('/components/') || path === '/login.html' || isPluginStatic) {
-                    const served = await serveStaticFiles(path, res);
-                    if (served) return;
+
+                // 尝试处理 UI 相关的请求
+                if (currentConfig.UI_ENABLED) {
+                     // 如果启用了 UI，或者请求的不是 UI 静态资源（可能是 API），则继续
+                     if (_isUIPath || isPluginStatic) {
+                        const pluginStaticOwner = isPluginStatic ? pluginManager.getPluginByStaticPath(path) : null;
+                        if (pluginStaticOwner && !pluginStaticOwner._enabled) {
+                            res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+                            res.end(JSON.stringify({
+                                success: false,
+                                error: {
+                                    message: `插件未启用：${pluginStaticOwner.name}`,
+                                    code: 'PLUGIN_DISABLED'
+                                }
+                            }));
+                            return;
+                        }
+                        const served = await serveStaticFiles(path, res);
+                        if (served) return;
+                    }
                 }
 
                 // 执行插件路由
                 const pluginRouteHandled = await pluginManager.executeRoutes(method, path, req, res, currentConfig);
                 if (pluginRouteHandled) return;
 
+                // 处理 UI API 请求（即使 UI_ENABLED 为 false，API 也保持可用）
                 const uiHandled = await handleUIApiRequests(method, path, req, res, currentConfig, providerPoolManager);
                 if (uiHandled) return;
 

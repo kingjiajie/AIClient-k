@@ -24,4 +24,6 @@ export {
     // iFlow OAuth
     handleIFlowOAuth,
     refreshIFlowTokens,
+    // Grok Auth
+    batchImportGrokTokensStream
 } from './index.js';

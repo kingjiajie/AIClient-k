@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import logger from '../utils/logger.js';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -10,36 +10,45 @@ import { getRequestBody } from '../utils/common.js';
 import { broadcastEvent } from '../ui-modules/event-broadcast.js';
 import { gitPersistence } from '../core/git-persistence.js';
 import { HEALTH_CHECK, PASSWORD, NETWORK, RETRY } from '../utils/constants.js';
+import { withFileLock, atomicWriteFile } from '../utils/file-lock.js';
+
+function parseBooleanConfig(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return Boolean(value);
+}
 
 /**
  * 重载配置文件
- * 动态导入config-manager并重新初始化配置
- * @returns {Promise<Object>} 返回重载后的配置对象
  */
 export async function reloadConfig(providerPoolManager) {
     try {
-        // Import config manager dynamically
-        const { initializeConfig } = await import('../core/config-manager.js');
-        
-        // Reload main config
-        const newConfig = await initializeConfig(process.argv.slice(2), 'configs/config.json');
-        // Update provider pool manager if available
-        if (providerPoolManager) {
-            providerPoolManager.providerPools = newConfig.providerPools;
-            providerPoolManager.initializeProviderStatus();
-        }
-        
-        // Update global CONFIG
-        Object.assign(CONFIG, newConfig);
-        logger.info('[UI API] Configuration reloaded:');
+        const configPath = 'configs/config.json';
+        // 使用文件锁进行重载，防止在写入期间读取
+        return await withFileLock(configPath, async () => {
+            // Import config manager dynamically
+            const { initializeConfig } = await import('../core/config-manager.js');
 
-        // Update initApiService - 清空并重新初始化服务实例
-        Object.keys(serviceInstances).forEach(key => delete serviceInstances[key]);
-        initApiService(CONFIG);
-        
-        logger.info('[UI API] Configuration reloaded successfully');
-        
-        return newConfig;
+            // Reload main config
+            const newConfig = await initializeConfig(process.argv.slice(2), configPath);
+            // Update provider pool manager if available
+            if (providerPoolManager) {
+                providerPoolManager.providerPools = newConfig.providerPools;
+                providerPoolManager.initializeProviderStatus(true);
+            }
+
+            // Update global CONFIG
+            Object.assign(CONFIG, newConfig);
+            logger.info('[UI API] Configuration reloaded:');
+
+            // Update initApiService - 清空并重新初始化服务实例
+            Object.keys(serviceInstances).forEach(key => delete serviceInstances[key]);
+            initApiService(CONFIG);
+
+            logger.info('[UI API] Configuration reloaded successfully');
+
+            return newConfig;
+        });
     } catch (error) {
         logger.error('[UI API] Failed to reload configuration:', error);
         throw error;
@@ -73,6 +82,10 @@ export async function handleGetConfig(req, res, currentConfig) {
         REQUEST_MAX_RETRIES: currentConfig.REQUEST_MAX_RETRIES,
         REQUEST_BASE_DELAY: currentConfig.REQUEST_BASE_DELAY,
         CREDENTIAL_SWITCH_MAX_RETRIES: currentConfig.CREDENTIAL_SWITCH_MAX_RETRIES,
+        RATE_LIMIT_COOLDOWN_ENABLED: currentConfig.RATE_LIMIT_COOLDOWN_ENABLED,
+        RATE_LIMIT_COOLDOWN_MS: currentConfig.RATE_LIMIT_COOLDOWN_MS,
+        RATE_LIMIT_COOLDOWN_JITTER_MS: currentConfig.RATE_LIMIT_COOLDOWN_JITTER_MS,
+        RATE_LIMIT_COOLDOWN_MAX_MS: currentConfig.RATE_LIMIT_COOLDOWN_MAX_MS,
         CRON_NEAR_MINUTES: currentConfig.CRON_NEAR_MINUTES,
         CRON_REFRESH_TOKEN: currentConfig.CRON_REFRESH_TOKEN,
         LOGIN_EXPIRY: currentConfig.LOGIN_EXPIRY,
@@ -113,6 +126,16 @@ export async function handleGetConfig(req, res, currentConfig) {
 export async function handleUpdateConfig(req, res, currentConfig) {
     try {
         const body = await getRequestBody(req);
+        const configPath = 'configs/config.json';
+        return await withFileLock(configPath, () => _handleUpdateConfig(req, res, currentConfig, body));
+    } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'File operation failed: ' + err.message } }));
+        return true;
+    }
+}
+async function _handleUpdateConfig(req, res, currentConfig, body) {
+    try {
         const newConfig = body;
 
         // Update config values in memory（含类型校验）
@@ -168,6 +191,19 @@ export async function handleUpdateConfig(req, res, currentConfig) {
         }
         if (newConfig.REQUEST_BASE_DELAY !== undefined) currentConfig.REQUEST_BASE_DELAY = newConfig.REQUEST_BASE_DELAY;
         if (newConfig.CREDENTIAL_SWITCH_MAX_RETRIES !== undefined) currentConfig.CREDENTIAL_SWITCH_MAX_RETRIES = newConfig.CREDENTIAL_SWITCH_MAX_RETRIES;
+        if (newConfig.RATE_LIMIT_COOLDOWN_ENABLED !== undefined) currentConfig.RATE_LIMIT_COOLDOWN_ENABLED = parseBooleanConfig(newConfig.RATE_LIMIT_COOLDOWN_ENABLED);
+        if (newConfig.RATE_LIMIT_COOLDOWN_MS !== undefined) {
+            const v = Number(newConfig.RATE_LIMIT_COOLDOWN_MS);
+            if (Number.isInteger(v) && v >= 0) currentConfig.RATE_LIMIT_COOLDOWN_MS = v;
+        }
+        if (newConfig.RATE_LIMIT_COOLDOWN_JITTER_MS !== undefined) {
+            const v = Number(newConfig.RATE_LIMIT_COOLDOWN_JITTER_MS);
+            if (Number.isInteger(v) && v >= 0) currentConfig.RATE_LIMIT_COOLDOWN_JITTER_MS = v;
+        }
+        if (newConfig.RATE_LIMIT_COOLDOWN_MAX_MS !== undefined) {
+            const v = Number(newConfig.RATE_LIMIT_COOLDOWN_MAX_MS);
+            if (Number.isInteger(v) && v >= 0) currentConfig.RATE_LIMIT_COOLDOWN_MAX_MS = v;
+        }
         if (newConfig.CRON_NEAR_MINUTES !== undefined) currentConfig.CRON_NEAR_MINUTES = newConfig.CRON_NEAR_MINUTES;
         if (newConfig.CRON_REFRESH_TOKEN !== undefined) currentConfig.CRON_REFRESH_TOKEN = newConfig.CRON_REFRESH_TOKEN;
         if (newConfig.LOGIN_EXPIRY !== undefined) currentConfig.LOGIN_EXPIRY = newConfig.LOGIN_EXPIRY;
@@ -267,7 +303,7 @@ export async function handleUpdateConfig(req, res, currentConfig) {
             const promptPath = currentConfig.SYSTEM_PROMPT_FILE_PATH || 'configs/input_system_prompt.txt';
             try {
                 const relativePath = path.relative(process.cwd(), promptPath);
-                writeFileSync(promptPath, newConfig.systemPrompt, 'utf-8');
+                await atomicWriteFile(promptPath, newConfig.systemPrompt, 'utf-8');
 
                 // 广播更新事件
                 broadcastEvent('config_update', {
@@ -301,6 +337,10 @@ export async function handleUpdateConfig(req, res, currentConfig) {
                 REQUEST_MAX_RETRIES: currentConfig.REQUEST_MAX_RETRIES,
                 REQUEST_BASE_DELAY: currentConfig.REQUEST_BASE_DELAY,
                 CREDENTIAL_SWITCH_MAX_RETRIES: currentConfig.CREDENTIAL_SWITCH_MAX_RETRIES,
+                RATE_LIMIT_COOLDOWN_ENABLED: currentConfig.RATE_LIMIT_COOLDOWN_ENABLED,
+                RATE_LIMIT_COOLDOWN_MS: currentConfig.RATE_LIMIT_COOLDOWN_MS,
+                RATE_LIMIT_COOLDOWN_JITTER_MS: currentConfig.RATE_LIMIT_COOLDOWN_JITTER_MS,
+                RATE_LIMIT_COOLDOWN_MAX_MS: currentConfig.RATE_LIMIT_COOLDOWN_MAX_MS,
                 CRON_NEAR_MINUTES: currentConfig.CRON_NEAR_MINUTES,
                 CRON_REFRESH_TOKEN: currentConfig.CRON_REFRESH_TOKEN,
                 LOGIN_EXPIRY: currentConfig.LOGIN_EXPIRY,
@@ -327,7 +367,7 @@ export async function handleUpdateConfig(req, res, currentConfig) {
                 SCHEDULED_HEALTH_CHECK: currentConfig.SCHEDULED_HEALTH_CHECK
             };
 
-            writeFileSync(configPath, JSON.stringify(configToSave, null, 2), 'utf-8');
+            await atomicWriteFile(configPath, JSON.stringify(configToSave, null, 2), { encoding: 'utf-8', mode: 0o600 });
             logger.info('[UI API] Configuration saved to configs/config.json');
             
             // Sync to Git
@@ -418,22 +458,22 @@ export async function handleUpdateAdminPassword(req, res) {
 
         if (!password || password.trim() === '') {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                error: { 
+            res.end(JSON.stringify({
+                error: {
                     message: 'Password cannot be empty',
                     messageCode: 'common.passwordEmpty'
-                } 
+                }
             }));
             return true;
         }
 
         if (password.trim().length < PASSWORD.MIN_LENGTH) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                error: { 
+            res.end(JSON.stringify({
+                error: {
                     message: `Password must be at least ${PASSWORD.MIN_LENGTH} characters`,
                     messageCode: 'common.passwordTooShort'
-                } 
+                }
             }));
             return true;
         }
@@ -448,8 +488,12 @@ export async function handleUpdateAdminPassword(req, res) {
         const stored = `pbkdf2:${salt}:${hash}`;
 
         const pwdFilePath = path.join(process.cwd(), 'configs', 'pwd');
-        await fs.writeFile(pwdFilePath, stored, 'utf-8');
-        
+
+        // 使用文件锁和原子化写入
+        await withFileLock(pwdFilePath, async () => {
+            await atomicWriteFile(pwdFilePath, stored, { encoding: 'utf-8', mode: 0o600 });
+        });
+
         logger.info('[UI API] Admin password updated successfully');
 
         res.writeHead(200, { 'Content-Type': 'application/json' });

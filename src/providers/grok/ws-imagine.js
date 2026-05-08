@@ -26,7 +26,7 @@ export class ImagineWebSocketService {
      * @returns {AsyncGenerator<object>}
      */
     async *stream(token, prompt, aspectRatio = '1:1', n = 1, enableNsfw = true) {
-        const proxyConfig = getProxyConfigForProvider(this.config, MODEL_PROVIDER.GROK_CUSTOM);
+        const proxyConfig = getProxyConfigForProvider(this.config, MODEL_PROVIDER.GROK_WEB);
         const agent = proxyConfig?.httpsAgent;
 
         let ssoToken = token || "";

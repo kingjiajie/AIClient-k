@@ -1,12 +1,84 @@
 // 配置管理模块
 
-import { showToast, formatUptime } from './utils.js';
+import { showToast, formatUptime, copyToClipboard, bindOnce } from './utils.js';
 import { handleProviderChange, handleGeminiCredsTypeChange, handleKiroCredsTypeChange } from './event-handlers.js';
-import { loadProviders } from './provider-manager.js';
 import { t } from './i18n.js';
+import { loadSectionIfActive } from './navigation.js';
 
 // 提供商配置缓存
 let currentProviderConfigs = null;
+
+function getSelectedModelProviders() {
+    const modelProviderEl = document.getElementById('modelProvider');
+    if (!modelProviderEl) {
+        return [];
+    }
+
+    return Array.from(modelProviderEl.querySelectorAll('.provider-tag.selected')).map(tag => ({
+        id: tag.getAttribute('data-value'),
+        name: tag.querySelector('span')?.textContent?.trim() || tag.getAttribute('data-value') || ''
+    }));
+}
+
+function maskApiKey(value) {
+    if (!value) {
+        return t('config.handoff.keyMissing');
+    }
+
+    if (value.length <= 8) {
+        return t('config.handoff.keyReadyShort', { key: value });
+    }
+
+    return t('config.handoff.keyReady', {
+        prefix: value.slice(0, 4),
+        suffix: value.slice(-4)
+    });
+}
+
+function updateConfigHandoffSummary() {
+    const apiKeyValue = document.getElementById('apiKey')?.value?.trim() || '';
+    const selectedProviders = getSelectedModelProviders();
+    const keyStatusEl = document.getElementById('configHandoffKeyStatus');
+    const providersEl = document.getElementById('configHandoffProviders');
+
+    if (keyStatusEl) {
+        keyStatusEl.textContent = maskApiKey(apiKeyValue);
+    }
+
+    if (providersEl) {
+        providersEl.textContent = selectedProviders.length > 0
+            ? selectedProviders.map(provider => provider.name).join(' / ')
+            : t('config.handoff.providersMissing');
+    }
+}
+
+function navigateToSection(sectionId) {
+    const navItem = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+    if (navItem) {
+        navItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return;
+    }
+
+    window.location.hash = `#${sectionId}`;
+}
+
+function initConfigPageHelpers() {
+    const apiKeyEl = document.getElementById('apiKey');
+    if (apiKeyEl && !apiKeyEl.dataset.handoffBound) {
+        const update = () => updateConfigHandoffSummary();
+        apiKeyEl.addEventListener('input', update);
+        apiKeyEl.addEventListener('change', update);
+        apiKeyEl.dataset.handoffBound = 'true';
+    }
+
+    const openAccessBtn = document.getElementById('configOpenQuickAccess');
+    bindOnce(openAccessBtn, 'click', () => navigateToSection('access'), 'configOpenQuickAccess');
+
+    const saveAndAccessBtn = document.getElementById('configSaveAndAccess');
+    bindOnce(saveAndAccessBtn, 'click', async () => {
+        await saveConfiguration({ navigateToAccess: true });
+    }, 'configSaveAndAccess');
+}
 
 /**
  * 更新提供商配置并重新渲染配置页面的提供商选择标签
@@ -38,9 +110,6 @@ function updateConfigProviderConfigs(configs) {
     if (scheduledHealthCheckProvidersEl) {
         renderProviderTags(scheduledHealthCheckProvidersEl, configs, false);
     }
-    
-    // 重新加载当前配置以恢复选中状态
-    loadConfiguration();
 }
 
 /**
@@ -81,6 +150,9 @@ function renderProviderTags(container, configs, isRequired) {
                 
                 // 更新视觉样式
                 updatePinnedStatus(container);
+                if (container.id === 'modelProvider') {
+                    updateConfigHandoffSummary();
+                }
                 return;
             }
 
@@ -102,6 +174,10 @@ function renderProviderTags(container, configs, isRequired) {
             // 如果取消选中了当前置顶的，重新计算置顶状态
             if (!tag.classList.contains('selected') && isModelProviderSelect) {
                 updatePinnedStatus(container);
+            }
+
+            if (container.id === 'modelProvider') {
+                updateConfigHandoffSummary();
             }
         });
     });
@@ -172,6 +248,7 @@ function addReplacementRow(oldVal = '', newVal = '') {
  */
 async function loadConfiguration() {
     try {
+        initConfigPageHelpers();
         const data = await window.apiClient.get('/config');
 
         // 初始化替换规则 UI
@@ -252,6 +329,8 @@ async function loadConfiguration() {
         const refreshConcurrencyPerProviderEl = document.getElementById('refreshConcurrencyPerProvider');
         const providerFallbackChainEl = document.getElementById('providerFallbackChain');
         const modelFallbackMappingEl = document.getElementById('modelFallbackMapping');
+        const rateLimitCooldownEnabledEl = document.getElementById('rateLimitCooldownEnabled');
+        const rateLimitCooldownMsEl = document.getElementById('rateLimitCooldownMs');
 
         if (systemPromptFilePathEl) systemPromptFilePathEl.value = data.SYSTEM_PROMPT_FILE_PATH || 'configs/input_system_prompt.txt';
         if (systemPromptModeEl) systemPromptModeEl.value = data.SYSTEM_PROMPT_MODE || 'append';
@@ -263,6 +342,8 @@ async function loadConfiguration() {
         // 坏凭证切换最大重试次数
         const credentialSwitchMaxRetriesEl = document.getElementById('credentialSwitchMaxRetries');
         if (credentialSwitchMaxRetriesEl) credentialSwitchMaxRetriesEl.value = data.CREDENTIAL_SWITCH_MAX_RETRIES || 5;
+        if (rateLimitCooldownEnabledEl) rateLimitCooldownEnabledEl.checked = data.RATE_LIMIT_COOLDOWN_ENABLED || false;
+        if (rateLimitCooldownMsEl) rateLimitCooldownMsEl.value = data.RATE_LIMIT_COOLDOWN_MS ?? 30000;
         
         if (cronNearMinutesEl) cronNearMinutesEl.value = data.CRON_NEAR_MINUTES || 1;
         if (cronRefreshTokenEl) cronRefreshTokenEl.checked = data.CRON_REFRESH_TOKEN || false;
@@ -395,6 +476,8 @@ async function loadConfiguration() {
                 }
             });
         });
+
+        updateConfigHandoffSummary();
         
     } catch (error) {
         console.error('Failed to load configuration:', error);
@@ -404,7 +487,8 @@ async function loadConfiguration() {
 /**
  * 保存配置
  */
-async function saveConfiguration() {
+async function saveConfiguration(options = {}) {
+    const { navigateToAccess: shouldNavigateToAccess = false } = options;
     const modelProviderEl = document.getElementById('modelProvider');
     let selectedProviders = [];
     if (modelProviderEl) {
@@ -451,6 +535,8 @@ async function saveConfiguration() {
     config.REQUEST_MAX_RETRIES = parseInt(document.getElementById('requestMaxRetries')?.value || 3);
     config.REQUEST_BASE_DELAY = parseInt(document.getElementById('requestBaseDelay')?.value || 1000);
     config.CREDENTIAL_SWITCH_MAX_RETRIES = parseInt(document.getElementById('credentialSwitchMaxRetries')?.value || 5);
+    config.RATE_LIMIT_COOLDOWN_ENABLED = document.getElementById('rateLimitCooldownEnabled')?.checked || false;
+    config.RATE_LIMIT_COOLDOWN_MS = parseInt(document.getElementById('rateLimitCooldownMs')?.value || 30000);
     config.CRON_NEAR_MINUTES = parseInt(document.getElementById('cronNearMinutes')?.value || 1);
     config.CRON_REFRESH_TOKEN = document.getElementById('cronRefreshToken')?.checked || false;
     config.LOGIN_EXPIRY = parseInt(document.getElementById('loginExpiry')?.value || 3600);
@@ -557,13 +643,21 @@ async function saveConfiguration() {
         
         await window.apiClient.post('/reload-config');
         showToast(t('common.success'), t('common.configSaved'), 'success');
+
+        if (window.loadAccessInfo) {
+            await window.loadAccessInfo();
+        }
+
+        updateConfigHandoffSummary();
         
         // 检查当前是否在提供商池管理页面，如果是则刷新数据
-        const providersSection = document.getElementById('providers');
-        if (providersSection && providersSection.classList.contains('active')) {
-            // 当前在提供商池页面，刷新数据
-            await loadProviders();
+        const refreshedProviders = await loadSectionIfActive('providers');
+        if (refreshedProviders) {
             showToast(t('common.success'), t('common.providerPoolRefreshed'), 'success');
+        }
+
+        if (shouldNavigateToAccess) {
+            navigateToSection('access');
         }
     } catch (error) {
         console.error('Failed to save configuration:', error);
@@ -585,11 +679,19 @@ function generateApiKey() {
     
     apiKeyEl.value = randomKey;
     
-    showToast(t('common.success'), t('config.apiKey.generated') || '已生成新的 API 密钥', 'success');
+    // 使用带回退机制的复制函数
+    copyToClipboard(randomKey).then(success => {
+        if (success) {
+            showToast(t('common.success'), t('config.apiKey.generatedAndCopied') || '已生成并自动复制新的 API 密钥', 'success');
+        } else {
+            showToast(t('common.success'), t('config.apiKey.generated') || '已生成新的 API 密钥', 'success');
+        }
+    });
     
     // 触发输入框的 change 事件
     apiKeyEl.dispatchEvent(new Event('input', { bubbles: true }));
     apiKeyEl.dispatchEvent(new Event('change', { bubbles: true }));
+    updateConfigHandoffSummary();
 }
 
 export {

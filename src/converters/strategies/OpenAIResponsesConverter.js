@@ -539,7 +539,7 @@ export class OpenAIResponsesConverter extends BaseConverter {
             usage: {
                 input_tokens: responsesResponse.usage?.input_tokens || 0,
                 output_tokens: responsesResponse.usage?.output_tokens || 0,
-                total_tokens: responsesResponse.usage?.total_tokens || 0
+                cache_read_input_tokens: responsesResponse.usage?.input_tokens_details?.cached_tokens || 0
             }
         };
     }
@@ -761,7 +761,8 @@ export class OpenAIResponsesConverter extends BaseConverter {
             usageMetadata: {
                 promptTokenCount: responsesResponse.usage?.input_tokens || 0,
                 candidatesTokenCount: responsesResponse.usage?.output_tokens || 0,
-                totalTokenCount: responsesResponse.usage?.total_tokens || 0
+                totalTokenCount: responsesResponse.usage?.total_tokens || 0,
+                cachedContentTokenCount: responsesResponse.usage?.input_tokens_details?.cached_tokens || 0
             }
         };
     }
@@ -945,7 +946,13 @@ export class OpenAIResponsesConverter extends BaseConverter {
             usage: {
                 input_tokens: responseData.usage?.input_tokens || 0,
                 output_tokens: responseData.usage?.output_tokens || 0,
-                total_tokens: responseData.usage?.total_tokens || 0
+                total_tokens: responseData.usage?.total_tokens || 0,
+                input_tokens_details: {
+                    cached_tokens: responseData.usage?.input_tokens_details?.cached_tokens || 0
+                },
+                output_tokens_details: {
+                    reasoning_tokens: responseData.usage?.output_tokens_details?.reasoning_tokens || 0
+                }
             }
         };
     }

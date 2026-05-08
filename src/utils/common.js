@@ -9,6 +9,19 @@ import { ProviderStrategyFactory } from './provider-strategies.js';
 import { getPluginManager } from '../core/plugin-manager.js';
 import { MODEL_PROTOCOL_PREFIX, MODEL_PROVIDER } from './constants.js';
 
+// ==================== 时间与时区 ====================
+
+/**
+ * 获取北京时间 (UTC+8) 的日期字符串 (YYYY-MM-DD)
+ * @returns {string} - YYYY-MM-DD 格式的日期字符串
+ */
+export function getBeijingDateString() {
+    const now = new Date();
+    // 强制增加 8 小时偏移来模拟 UTC+8
+    const utc8Time = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+    return utc8Time.toISOString().split('T')[0];
+}
+
 // ==================== 网络错误处理 ====================
 
 /**
@@ -39,9 +52,147 @@ export function isRetryableNetworkError(error) {
     const errorCode = error.code || '';
     const errorMessage = error.message || '';
     
-    return RETRYABLE_NETWORK_ERRORS.some(errId =>
-        errorCode === errId || errorMessage.includes(errId)
+    return RETRYABLE_NETWORK_ERRORS.some(err => 
+        errorCode === err || errorMessage.includes(err)
     );
+}
+
+/**
+ * 确保状态码是有效的 HTTP 状态码
+ * @param {any} code - 待检查的状态码
+ * @returns {number} - 有效的 HTTP 状态码 (100-599)，默认为 500
+ */
+export function ensureValidStatusCode(code) {
+    const num = parseInt(code, 10);
+    if (!isNaN(num) && num >= 100 && num < 600) {
+        return num;
+    }
+    return 500;
+}
+
+
+function getErrorStatusCode(error) {
+    return error?.response?.status || error?.status || error?.statusCode || error?.code || null;
+}
+
+function getHeaderValue(headers, headerName) {
+    if (!headers) return null;
+
+    if (typeof headers.get === 'function') {
+        return headers.get(headerName) || headers.get(headerName.toLowerCase());
+    }
+
+    const lowerName = headerName.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+        if (key.toLowerCase() === lowerName) {
+            return Array.isArray(value) ? value[0] : value;
+        }
+    }
+
+    return null;
+}
+
+function parseRetryAfterMs(value, now = Date.now()) {
+    if (value === null || value === undefined) return null;
+
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    const text = String(rawValue).trim();
+    if (!text) return null;
+
+    const seconds = Number(text);
+    if (Number.isFinite(seconds)) {
+        return Math.max(0, Math.round(seconds * 1000));
+    }
+
+    const dateMs = Date.parse(text);
+    if (!Number.isNaN(dateMs)) {
+        return Math.max(0, dateMs - now);
+    }
+
+    return null;
+}
+
+function parseDurationMs(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
+
+    const text = String(value).trim();
+    const match = text.match(/^([\d.]+)\s*(ms|s)?$/i);
+    if (!match) return null;
+
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount)) return null;
+
+    return Math.max(0, Math.round(match[2]?.toLowerCase() === 's' ? amount * 1000 : amount));
+}
+
+function getRetryDelayFromBody(errorBody) {
+    try {
+        const data = typeof errorBody === 'string' ? JSON.parse(errorBody) : errorBody;
+
+        const directDelay = parseDurationMs(data?.retryDelay ?? data?.retry_delay ?? data?.retryAfterMs);
+        if (directDelay !== null) return directDelay;
+
+        const details = data?.error?.details;
+        if (Array.isArray(details)) {
+            for (const detail of details) {
+                const retryDelay = parseDurationMs(detail?.retryDelay || detail?.metadata?.quotaResetDelay);
+                if (retryDelay !== null) return retryDelay;
+            }
+        }
+
+        const message = data?.error?.message;
+        if (message) {
+            const match = message.match(/after\s+([\d.]+)\s*(ms|s)?\.?/i);
+            if (match) {
+                const amount = parseFloat(match[1]);
+                return Math.max(0, Math.round(match[2]?.toLowerCase() === 'ms' ? amount : amount * 1000));
+            }
+        }
+    } catch {}
+
+    return null;
+}
+
+export function getRetryAfterMs(error, now = Date.now()) {
+    const headerDelay = parseRetryAfterMs(getHeaderValue(error?.response?.headers, 'retry-after'), now);
+    if (headerDelay !== null) return headerDelay;
+
+    const explicitDelay = parseDurationMs(error?.retryAfterMs);
+    if (explicitDelay !== null) return explicitDelay;
+
+    const internalRetryAfterDelay = parseDurationMs(error?.retryAfter);
+    if (internalRetryAfterDelay !== null) return internalRetryAfterDelay;
+
+    const retryAfterDelay = parseRetryAfterMs(error?.response?.data?.retryAfter ?? error?.response?.data?.retry_after, now);
+    if (retryAfterDelay !== null) return retryAfterDelay;
+
+    return getRetryDelayFromBody(error?.response?.data);
+}
+
+function getPositiveInteger(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : fallback;
+}
+
+/**
+ * Calculates a scheduled recovery time for optional 429 account cooldown.
+ * Returns null when cooldown is disabled or the error is not an HTTP 429.
+ */
+export function getRateLimitCooldownRecoveryTime(error, config = {}, now = Date.now()) {
+    if (!config?.RATE_LIMIT_COOLDOWN_ENABLED || Number(getErrorStatusCode(error)) !== 429) {
+        return null;
+    }
+
+    const defaultCooldownMs = getPositiveInteger(config.RATE_LIMIT_COOLDOWN_MS, 30000);
+    const maxCooldownMs = getPositiveInteger(config.RATE_LIMIT_COOLDOWN_MAX_MS, 300000);
+    const jitterMs = getPositiveInteger(config.RATE_LIMIT_COOLDOWN_JITTER_MS, 0);
+    const retryAfterMs = getRetryAfterMs(error, now);
+    const baseCooldownMs = retryAfterMs === null ? defaultCooldownMs : retryAfterMs;
+    const cappedCooldownMs = Math.min(baseCooldownMs, Math.max(defaultCooldownMs, maxCooldownMs));
+    const jitter = jitterMs > 0 ? Math.floor(Math.random() * (jitterMs + 1)) : 0;
+
+    return new Date(now + cappedCooldownMs + jitter);
 }
 
 // ==================== API 常量 ====================
@@ -53,7 +204,11 @@ export const API_ACTIONS = {
 
 import {
     usesManagedModelList,
-    getConfiguredSupportedModels
+    getConfiguredSupportedModels,
+    getCustomModelConfig,
+    getCustomModelActualProvider,
+    getCustomModelListProvider,
+    normalizeModelIds
 } from '../providers/provider-models.js';
 
 /**
@@ -71,6 +226,158 @@ function getConfiguredSupportedModelsFromPool(providerPoolManager, providerType)
         providerPoolManager.providerStatus[providerType]
             .flatMap(providerStatus => getConfiguredSupportedModels(providerType, providerStatus.config))
     )].sort((a, b) => a.localeCompare(b));
+}
+
+function getCustomModelEntriesForProvider(config, providerType = null, options = {}) {
+    const customModels = Array.isArray(config?.customModels) ? config.customModels : [];
+    const entries = [];
+
+    customModels.forEach(modelConfig => {
+        if (!modelConfig?.id) {
+            return;
+        }
+
+        const modelProvider = getCustomModelListProvider(modelConfig);
+        const actualProvider = getCustomModelActualProvider(modelConfig);
+        const isMatch = !providerType ||
+            modelProvider === providerType ||
+            (modelProvider && providerType.startsWith(modelProvider + '-'));
+
+        if (!isMatch) {
+            return;
+        }
+
+        const modelId = modelConfig.id;
+        if (!modelId) {
+            return;
+        }
+
+        const responseId = options.prefixProvider && modelProvider
+            ? `${modelProvider}:${modelId}`
+            : modelId;
+
+        entries.push({
+            id: responseId,
+            modelId,
+            provider: modelProvider || providerType || MODEL_PROVIDER.AUTO,
+            actualProvider: actualProvider || modelProvider || providerType || MODEL_PROVIDER.AUTO,
+            config: modelConfig
+        });
+    });
+
+    return entries;
+}
+
+export function resolveCustomModelRouting(model, currentProvider, customModelConfig = getCustomModelConfig(model, currentProvider)) {
+    if (!customModelConfig) {
+        return {
+            isCustomModel: false,
+            model,
+            provider: currentProvider,
+            actualModel: model,
+            actualProvider: currentProvider,
+            config: null
+        };
+    }
+
+    const customActualProvider = getCustomModelActualProvider(customModelConfig);
+    const customActualModel = customModelConfig.actualModel || customModelConfig.id || model;
+
+    return {
+        isCustomModel: true,
+        model: customActualModel,
+        provider: customActualProvider || currentProvider,
+        actualModel: customActualModel,
+        actualProvider: customActualProvider || currentProvider,
+        config: customModelConfig
+    };
+}
+
+function appendCustomModelsToModelList(clientModelList, customEntries, providerType, listEndpointType) {
+    const entries = Array.isArray(customEntries) ? customEntries : [];
+    const hasMetadataValue = (value) => value !== undefined && value !== null;
+
+    if (!entries.length) {
+        return clientModelList;
+    }
+
+    if (listEndpointType === ENDPOINT_TYPE.GEMINI_MODEL_LIST) {
+        const models = Array.isArray(clientModelList?.models) ? clientModelList.models : [];
+
+        entries.forEach(entry => {
+            const existingModel = models.find(model => {
+                const existingId = model?.baseModelId || model?.name;
+                if (!existingId) return false;
+                const normalizedId = existingId.startsWith('models/') ? existingId.substring(7) : existingId;
+                return normalizedId === entry.id;
+            });
+            if (existingModel) {
+                existingModel.displayName = entry.config.name || existingModel.displayName || entry.id;
+                existingModel.description = entry.config.description || existingModel.description || `Model ${entry.modelId} provided by ${entry.provider || providerType}`;
+                if (hasMetadataValue(entry.config.contextLength)) existingModel.inputTokenLimit = entry.config.contextLength;
+                if (hasMetadataValue(entry.config.maxTokens)) existingModel.outputTokenLimit = entry.config.maxTokens;
+                return;
+            }
+
+            const modelResponse = {
+                name: `models/${entry.id}`,
+                baseModelId: entry.id,
+                version: 'v1',
+                displayName: entry.config.name || entry.id,
+                description: entry.config.description || `Model ${entry.modelId} provided by ${entry.provider || providerType}`,
+                supportedGenerationMethods: ['generateContent', 'countTokens']
+            };
+
+            if (hasMetadataValue(entry.config.contextLength)) modelResponse.inputTokenLimit = entry.config.contextLength;
+            if (hasMetadataValue(entry.config.maxTokens)) modelResponse.outputTokenLimit = entry.config.maxTokens;
+
+            models.push(modelResponse);
+        });
+
+        return {
+            ...clientModelList,
+            models
+        };
+    }
+
+    if (listEndpointType === ENDPOINT_TYPE.OPENAI_MODEL_LIST) {
+        const models = Array.isArray(clientModelList?.data) ? clientModelList.data : [];
+
+        entries.forEach(entry => {
+            const existingModel = models.find(model => model?.id === entry.id);
+            if (existingModel) {
+                // 更新现有模型的元数据
+                if (entry.config.name) existingModel.display_name = entry.config.name;
+                if (entry.config.description) existingModel.description = entry.config.description;
+                if (hasMetadataValue(entry.config.contextLength)) existingModel.context_length = entry.config.contextLength;
+                if (hasMetadataValue(entry.config.maxTokens)) existingModel.max_tokens = entry.config.maxTokens;
+                return;
+            }
+
+            // 添加新模型
+            const modelResponse = {
+                id: entry.id,
+                object: 'model',
+                created: Math.floor(Date.now() / 1000),
+                owned_by: entry.provider || providerType || 'custom',
+                display_name: entry.config.name || entry.id
+            };
+
+            if (entry.config.description) modelResponse.description = entry.config.description;
+            if (hasMetadataValue(entry.config.contextLength)) modelResponse.context_length = entry.config.contextLength;
+            if (hasMetadataValue(entry.config.maxTokens)) modelResponse.max_tokens = entry.config.maxTokens;
+
+            models.push(modelResponse);
+        });
+
+        return {
+            ...clientModelList,
+            object: 'list',
+            data: models
+        };
+    }
+
+    return clientModelList;
 }
 
 /**
@@ -276,10 +583,11 @@ export function isAuthorized(req, requestUrl, REQUIRED_API_KEY) {
  * @param {boolean} isStream - Whether the response is a stream.
  */
 export async function handleUnifiedResponse(res, responsePayload, isStream, statusCode = 200) {
+    const validatedStatusCode = ensureValidStatusCode(statusCode);
     if (isStream) {
         res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "Transfer-Encoding": "chunked" });
     } else {
-        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+        res.writeHead(validatedStatusCode, { 'Content-Type': 'application/json' });
     }
 
     if (isStream) {
@@ -290,7 +598,7 @@ export async function handleUnifiedResponse(res, responsePayload, isStream, stat
 }
 
 function getPluginHookRequestId(config) {
-    return config?._monitorRequestId || config?._pluginRequestId || null;
+    return config?._monitorRequestId || null;
 }
 
 export async function handleStreamRequest(res, service, model, requestBody, fromProvider, toProvider, PROMPT_LOG_MODE, PROMPT_LOG_FILENAME, providerPoolManager, pooluuid, customName, retryContext = null) {
@@ -507,7 +815,7 @@ export async function handleStreamRequest(res, service, model, requestBody, from
         }
         
         // 获取状态码（用于日志记录，不再用于判断是否重试）
-        const status = error.response?.status;
+        const status = getErrorStatusCode(error);
         
         // 检查是否应该跳过错误计数（用于 429/5xx 等需要直接切换凭证的情况）
         const skipErrorCount = error.skipErrorCount === true;
@@ -516,6 +824,15 @@ export async function handleStreamRequest(res, service, model, requestBody, from
         
         // 检查凭证是否已在底层被标记为不健康（避免重复标记）
         let credentialMarkedUnhealthy = error.credentialMarkedUnhealthy === true;
+
+        const rateLimitRecoveryTime = getRateLimitCooldownRecoveryTime(error, CONFIG);
+        if (rateLimitRecoveryTime && providerPoolManager && pooluuid) {
+            logger.info(`[Provider Pool] Applying 429 cooldown for ${toProvider} (${pooluuid}) until ${rateLimitRecoveryTime.toISOString()}`);
+            providerPoolManager.markProviderUnhealthyWithRecoveryTime(toProvider, {
+                uuid: pooluuid
+            }, '429 Too Many Requests - short cooldown', rateLimitRecoveryTime);
+            credentialMarkedUnhealthy = true;
+        }
         
         // 如果底层未标记，且不跳过错误计数，则在此处标记
         if (!credentialMarkedUnhealthy && !skipErrorCount && providerPoolManager && pooluuid) {
@@ -709,7 +1026,7 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
         logger.error('\n[Server] Error during unary processing:', error.stack);
         
         // 获取状态码（用于日志记录，不再用于判断是否重试）
-        const status = error.response?.status;
+        const status = getErrorStatusCode(error);
         
         // 检查是否应该跳过错误计数（用于 429/5xx 等需要直接切换凭证的情况）
         const skipErrorCount = error.skipErrorCount === true;
@@ -718,6 +1035,15 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
         
         // 检查凭证是否已在底层被标记为不健康（避免重复标记）
         let credentialMarkedUnhealthy = error.credentialMarkedUnhealthy === true;
+
+        const rateLimitRecoveryTime = getRateLimitCooldownRecoveryTime(error, CONFIG);
+        if (rateLimitRecoveryTime && providerPoolManager && pooluuid) {
+            logger.info(`[Provider Pool] Applying 429 cooldown for ${toProvider} (${pooluuid}) until ${rateLimitRecoveryTime.toISOString()}`);
+            providerPoolManager.markProviderUnhealthyWithRecoveryTime(toProvider, {
+                uuid: pooluuid
+            }, '429 Too Many Requests - short cooldown', rateLimitRecoveryTime);
+            credentialMarkedUnhealthy = true;
+        }
         
         // 如果底层未标记，且不跳过错误计数，则在此处标记
         if (!credentialMarkedUnhealthy && !skipErrorCount && providerPoolManager && pooluuid) {
@@ -789,7 +1115,8 @@ export async function handleUnaryRequest(res, service, model, requestBody, fromP
 
         // 使用新方法创建符合 fromProvider 格式的错误响应
         const errorResponse = createErrorResponse(error, fromProvider);
-        const statusCode = error.status || error.code || (error.response && error.response.status) || 500;
+        const rawStatusCode = error.status || error.code || (error.response && error.response.status) || 500;
+        const statusCode = ensureValidStatusCode(rawStatusCode);
         await handleUnifiedResponse(res, JSON.stringify(errorResponse), false, statusCode);
     } finally {
         // 确保在请求结束或出错时释放插槽
@@ -830,25 +1157,48 @@ export async function handleModelListRequest(req, res, service, endpointType, CO
             if (listEndpointType === ENDPOINT_TYPE.OPENAI_MODEL_LIST) {
                 return {
                     object: 'list',
-                    data: models.map(model => ({
-                        id: model,
-                        object: 'model',
-                        created: Math.floor(Date.now() / 1000),
-                        owned_by: providerType
-                    }))
+                    data: models.map(modelId => {
+                        const customConfig = getCustomModelConfig(modelId, providerType);
+                        const modelResponse = {
+                            id: modelId,
+                            object: 'model',
+                            created: Math.floor(Date.now() / 1000),
+                            owned_by: providerType
+                        };
+                        
+                        // 注入自定义元数据
+                        if (customConfig) {
+                            if (customConfig.contextLength) modelResponse.context_length = customConfig.contextLength;
+                            if (customConfig.maxTokens) modelResponse.max_tokens = customConfig.maxTokens;
+                            if (customConfig.description) modelResponse.description = customConfig.description;
+                        }
+                        
+                        return modelResponse;
+                    })
                 };
             }
 
             if (listEndpointType === ENDPOINT_TYPE.GEMINI_MODEL_LIST) {
                 return {
-                    models: models.map(model => ({
-                        name: `models/${model}`,
-                        baseModelId: model,
-                        version: 'v1',
-                        displayName: model,
-                        description: `Model ${model} provided by ${providerType}`,
-                        supportedGenerationMethods: ['generateContent', 'countTokens']
-                    }))
+                    models: models.map(modelId => {
+                        const customConfig = getCustomModelConfig(modelId, providerType);
+                        const modelResponse = {
+                            name: `models/${modelId}`,
+                            baseModelId: modelId,
+                            version: 'v1',
+                            displayName: modelId,
+                            description: `Model ${modelId} provided by ${providerType}`,
+                            supportedGenerationMethods: ['generateContent', 'countTokens']
+                        };
+                        
+                        if (customConfig) {
+                            if (customConfig.contextLength) modelResponse.inputTokenLimit = customConfig.contextLength;
+                            if (customConfig.maxTokens) modelResponse.outputTokenLimit = customConfig.maxTokens;
+                            if (customConfig.description) modelResponse.description = customConfig.description;
+                        }
+                        
+                        return modelResponse;
+                    })
                 };
             }
 
@@ -895,6 +1245,14 @@ export async function handleModelListRequest(req, res, service, endpointType, CO
                 logger.info(`[ModelList Convert] Model list format matches. No conversion needed.`);
             }
             }
+
+            const customEntries = getCustomModelEntriesForProvider(CONFIG, toProvider);
+            clientModelList = appendCustomModelsToModelList(clientModelList, customEntries, toProvider, endpointType);
+        }
+
+        if (CONFIG.MODEL_PROVIDER === MODEL_PROVIDER.AUTO) {
+            const customEntries = getCustomModelEntriesForProvider(CONFIG, null, { prefixProvider: true });
+            clientModelList = appendCustomModelsToModelList(clientModelList, customEntries, MODEL_PROVIDER.AUTO, endpointType);
         }
 
         // logger.info(`[ModelList Response] Sending model list to client: ${JSON.stringify(clientModelList)}`);
@@ -952,6 +1310,26 @@ export async function handleContentGenerationRequest(req, res, service, endpoint
     if (!model) {
         throw new Error("Could not determine the model from the request.");
     }
+    
+    // 2.1. 处理自定义模型映射和别名
+    const customModelConfig = getCustomModelConfig(model, CONFIG.MODEL_PROVIDER);
+    CONFIG.customConfig = customModelConfig || null;
+    if (customModelConfig) {
+        const customRouting = resolveCustomModelRouting(model, CONFIG.MODEL_PROVIDER, customModelConfig);
+        logger.info(`[Custom Model] Resolved '${model}' to actual model '${customRouting.actualModel}'`);
+        
+        if (customRouting.actualProvider && customRouting.actualProvider !== CONFIG.MODEL_PROVIDER) {
+            CONFIG.MODEL_PROVIDER = customRouting.actualProvider;
+            toProvider = customRouting.actualProvider;
+            logger.info(`[Custom Model] Switched provider to '${CONFIG.MODEL_PROVIDER}' based on custom model config`);
+        }
+
+        // 映射到实际模型 ID
+        if (customRouting.actualModel) {
+            model = customRouting.actualModel;
+        }
+    }
+
     logger.info(`[Content Generation] Model: ${model}, Stream: ${isStream}`);
 
     let actualCustomName = CONFIG.customName;
@@ -984,7 +1362,9 @@ export async function handleContentGenerationRequest(req, res, service, endpoint
     }
 
     // 1. Convert request body from client format to backend format, if necessary.
-    let processedRequestBody = originalRequestBody;
+    // 使用浅拷贝以避免直接变异 originalRequestBody，保持原始数据的纯净性以供后续钩子使用
+    let processedRequestBody = { ...originalRequestBody };
+
     // 将 _monitorRequestId 注入到 requestBody 中，以便在 service 内部访问
     if (CONFIG._monitorRequestId) {
         processedRequestBody._monitorRequestId = CONFIG._monitorRequestId;
@@ -998,7 +1378,15 @@ export async function handleContentGenerationRequest(req, res, service, endpoint
     // fs.writeFile('originalRequestBody'+Date.now()+'.json', JSON.stringify(originalRequestBody));
     if (getProtocolPrefix(fromProvider) !== getProtocolPrefix(toProvider)) {
         logger.info(`[Request Convert] Converting request from ${fromProvider} to ${toProvider}`);
-        processedRequestBody = convertData(originalRequestBody, 'request', fromProvider, toProvider);
+        const preConvertBody = processedRequestBody;
+        processedRequestBody = convertData(preConvertBody, 'request', fromProvider, toProvider);
+
+        // 保持以 _ 开头的内部属性（如 _monitorRequestId, _requestBaseUrl）
+        Object.keys(preConvertBody).forEach(key => {
+            if (key.startsWith('_') && processedRequestBody[key] === undefined) {
+                processedRequestBody[key] = preConvertBody[key];
+            }
+        });
     } else {
         logger.info(`[Request Convert] Request format matches backend provider. No conversion needed.`);
     }
@@ -1015,6 +1403,12 @@ export async function handleContentGenerationRequest(req, res, service, endpoint
 
     // 4. Log the incoming prompt (after potential conversion to the backend's format).
     const promptText = extractPromptText(processedRequestBody, toProvider);
+    
+    // 4.1. 应用自定义模型参数 (温度、最大长度等)
+    if (customModelConfig) {
+        _applyCustomModelParameters(processedRequestBody, customModelConfig, toProvider);
+    }
+
     await logConversation('input', promptText, CONFIG.PROMPT_LOG_MODE, PROMPT_LOG_FILENAME);
     
     // 5. Call the appropriate stream or unary handler, passing the provider info.
@@ -1081,8 +1475,74 @@ export function extractPromptText(requestBody, provider) {
     return strategy.extractPromptText(requestBody);
 }
 
+/**
+ * 应用自定义模型参数到请求体
+ * @param {Object} requestBody - 处理后的请求体
+ * @param {Object} customConfig - 自定义模型配置
+ * @param {string} provider - 目标提供商
+ */
+function _applyCustomModelParameters(requestBody, customConfig, provider) {
+    const protocol = getProtocolPrefix(provider);
+    const hasConfiguredValue = (value) => value !== undefined && value !== null;
+
+    // 参数映射表
+    const mappings = {
+        temperature: {
+            [MODEL_PROTOCOL_PREFIX.OPENAI]: 'temperature',
+            [MODEL_PROTOCOL_PREFIX.OPENAI_RESPONSES]: 'temperature',
+            [MODEL_PROTOCOL_PREFIX.CLAUDE]: 'temperature',
+            [MODEL_PROTOCOL_PREFIX.GEMINI]: 'generationConfig.temperature'
+        },
+        maxTokens: {
+            [MODEL_PROTOCOL_PREFIX.OPENAI]: 'max_tokens',
+            [MODEL_PROTOCOL_PREFIX.OPENAI_RESPONSES]: 'max_output_tokens',
+            [MODEL_PROTOCOL_PREFIX.CLAUDE]: 'max_tokens',
+            [MODEL_PROTOCOL_PREFIX.GEMINI]: 'generationConfig.maxOutputTokens'
+        },
+        topP: {
+            [MODEL_PROTOCOL_PREFIX.OPENAI]: 'top_p',
+            [MODEL_PROTOCOL_PREFIX.OPENAI_RESPONSES]: 'top_p',
+            [MODEL_PROTOCOL_PREFIX.CLAUDE]: 'top_p',
+            [MODEL_PROTOCOL_PREFIX.GEMINI]: 'generationConfig.topP'
+        }
+    };
+
+    // 处理嵌套路径 (例如 generationConfig.temperature)
+    const setNestedProperty = (obj, path, value) => {
+        const parts = path.split('.');
+        let curr = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!curr[parts[i]]) curr[parts[i]] = {};
+            curr = curr[parts[i]];
+        }
+        curr[parts[parts.length - 1]] = value;
+        logger.debug(`[Custom Model] Applied nested parameter ${path}=${value}`);
+    };
+
+    // 应用配置
+    Object.keys(mappings).forEach(key => {
+        const value = customConfig[key];
+        const targetPath = mappings[key][protocol];
+        
+        if (hasConfiguredValue(value) && targetPath) {
+            if (targetPath.includes('.')) {
+                setNestedProperty(requestBody, targetPath, value);
+            } else {
+                requestBody[targetPath] = value;
+                logger.debug(`[Custom Model] Applied ${key}=${value} to request (${targetPath})`);
+            }
+        }
+    });
+
+    // 处理特殊的 contextLength (通常不直接发给 API，但可能被某些插件使用)
+    // if (hasConfiguredValue(customConfig.contextLength)) {
+    //     requestBody._contextLength = customConfig.contextLength;
+    // }
+}
+
 export function handleError(res, error, provider = null, fromProvider = null, req = null) {
-    const statusCode = error.response?.status || error.statusCode || error.status || error.code || 500;
+    const rawStatusCode = error.response?.status || error.statusCode || error.status || error.code || 500;
+    const statusCode = ensureValidStatusCode(rawStatusCode);
     
     // 如果没有提供 fromProvider 但提供了 req，尝试从路径推断
     if (!fromProvider && req && req.url) {
@@ -1318,7 +1778,7 @@ export function extractSystemPromptFromRequestBody(requestBody, provider) {
     let incomingSystemText = '';
     switch (provider) {
         case MODEL_PROTOCOL_PREFIX.OPENAI:
-            const openaiSystemMessage = requestBody.messages?.find(m => m.role === 'system');
+            const openaiSystemMessage = requestBody.messages?.find(m => m.role === 'system' || m.role === 'developer');
             if (openaiSystemMessage?.content) {
                 incomingSystemText = openaiSystemMessage.content;
             } else if (requestBody.messages?.length > 0) {
@@ -1326,6 +1786,15 @@ export function extractSystemPromptFromRequestBody(requestBody, provider) {
                 const userMessage = requestBody.messages.find(m => m.role === 'user');
                 if (userMessage) {
                     incomingSystemText = userMessage.content;
+                }
+            }
+            if (typeof incomingSystemText === 'object' && incomingSystemText !== null) {
+                if (Array.isArray(incomingSystemText)) {
+                    incomingSystemText = incomingSystemText
+                        .map(item => (typeof item === 'string' ? item : item.text || JSON.stringify(item)))
+                        .join('\n');
+                } else {
+                    incomingSystemText = JSON.stringify(incomingSystemText);
                 }
             }
             break;
@@ -1418,7 +1887,8 @@ export function formatToLocal(dateInput) {
  */
 function createErrorResponse(error, fromProvider) {
     const protocolPrefix = getProtocolPrefix(fromProvider);
-    const statusCode = error.status || error.code || 500;
+    const rawStatusCode = error.status || error.code || 500;
+    const statusCode = ensureValidStatusCode(rawStatusCode);
     const errorMessage = error.message || "An error occurred during processing.";
     
     // 根据 HTTP 状态码映射错误类型
@@ -1502,7 +1972,8 @@ function createErrorResponse(error, fromProvider) {
  */
 function createStreamErrorResponse(error, fromProvider) {
     const protocolPrefix = getProtocolPrefix(fromProvider);
-    const statusCode = error.status || error.code || 500;
+    const rawStatusCode = error.status || error.code || 500;
+    const statusCode = ensureValidStatusCode(rawStatusCode);
     const errorMessage = error.message || "An error occurred during streaming.";
     
     // 根据 HTTP 状态码映射错误类型

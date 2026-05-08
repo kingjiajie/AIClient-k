@@ -1,3 +1,4 @@
+import { atomicWriteFile } from '../utils/file-lock.js';
 import { existsSync } from 'fs';
 import logger from '../utils/logger.js';
 import { promises as fs } from 'fs';
@@ -138,7 +139,7 @@ async function readTokenStore() {
  */
 async function writeTokenStore(tokenStore) {
     try {
-        await fs.writeFile(TOKEN_STORE_FILE, JSON.stringify(tokenStore, null, 2), 'utf8');
+        await atomicWriteFile(TOKEN_STORE_FILE, JSON.stringify(tokenStore, null, 2), { encoding: 'utf8', mode: 0o600 });
         gitPersistence.save('Auth tokens updated').catch(err => logger.error('[GitPersistence] Auth save failed:', err));
     } catch (error) {
         logger.error('[Token Store] Failed to write token store file:', error);
@@ -284,15 +285,31 @@ export async function cleanupExpiredTokens() {
 
 /**
  * 检查token验证
+ * 支持 Authorization Header 或 URL 参数 token (用于 SSE)
  */
 export async function checkAuth(req) {
-    const authHeader = req.headers.authorization;
+    let token = null;
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // 1. 检查 Authorization header
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+    }
+    
+    // 2. 检查 URL 参数 (用于 EventSource/SSE)
+    if (!token && req.url) {
+        try {
+            const url = new URL(req.url, 'http://localhost');
+            token = url.searchParams.get('token');
+        } catch (e) {
+            // 解析失败忽略
+        }
+    }
+    
+    if (!token) {
         return false;
     }
 
-    const token = authHeader.substring(7);
     const tokenInfo = await verifyToken(token);
     
     return tokenInfo !== null;

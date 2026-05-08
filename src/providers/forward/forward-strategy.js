@@ -64,7 +64,7 @@ class ForwardStrategy extends ProviderStrategy {
         if (!requestBody.messages) {
             requestBody.messages = [];
         }
-        const systemMessageIndex = requestBody.messages.findIndex(m => m.role === 'system');
+        const systemMessageIndex = requestBody.messages.findIndex(m => m.role === 'system' || m.role === 'developer');
         if (systemMessageIndex !== -1) {
             requestBody.messages[systemMessageIndex].content = finalSystemText;
         } else {

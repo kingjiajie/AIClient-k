@@ -2,6 +2,38 @@
 <!-- Configuration Section -->
 <section id="config" class="section" aria-labelledby="config-title">
     <h2 id="config-title" data-i18n="config.title">配置管理</h2>
+    <div class="config-handoff-panel">
+        <div class="config-handoff-head">
+            <div>
+                <h3 data-i18n="config.handoff.title">对外接入交付</h3>
+                <p class="config-handoff-subtitle" data-i18n="config.handoff.subtitle">先在这里把对外 Key 和预加载供应商配好，再一键跳到“快速接入”页面复制给客户端。</p>
+            </div>
+            <div class="config-handoff-actions">
+                <button type="button" class="btn btn-outline" id="configOpenQuickAccess">
+                    <i class="fas fa-external-link-alt"></i>
+                    <span data-i18n="config.handoff.openAccess">打开快速接入</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="configSaveAndAccess">
+                    <i class="fas fa-paper-plane"></i>
+                    <span data-i18n="config.handoff.saveAndAccess">保存并前往快速接入</span>
+                </button>
+            </div>
+        </div>
+        <div class="config-handoff-grid">
+            <div class="config-handoff-item">
+                <span class="config-handoff-label" data-i18n="config.handoff.key">对外 Key</span>
+                <strong id="configHandoffKeyStatus">--</strong>
+            </div>
+            <div class="config-handoff-item">
+                <span class="config-handoff-label" data-i18n="config.handoff.providers">预加载供应商</span>
+                <strong id="configHandoffProviders">--</strong>
+            </div>
+            <div class="config-handoff-item">
+                <span class="config-handoff-label" data-i18n="config.handoff.nextStep">下一步</span>
+                <strong data-i18n="config.handoff.nextStepValue">去快速接入复制现成片段</strong>
+            </div>
+        </div>
+    </div>
     <div class="config-panel">
         <div class="config-form">
             <!-- 基础设置 -->
@@ -67,9 +99,9 @@
                             <i class="fas fa-code"></i>
                             <span data-i18n="dashboard.routing.nodeName.codex">OpenAI Codex OAuth</span>
                         </button>
-                        <button type="button" class="provider-tag" data-value="grok-custom">
+                        <button type="button" class="provider-tag" data-value="grok-web">
                             <i class="fas fa-search"></i>
-                            <span data-i18n="dashboard.routing.nodeName.grok">Grok Reverse</span>
+                            <span data-i18n="dashboard.routing.nodeName.grok">Grok Web</span>
                         </button>
                     </div>
                     <small class="form-text" data-i18n="config.modelProviderHelp">点击选择启动时初始化的模型提供商 (必须至少选择一个)</small>
@@ -120,9 +152,9 @@
                             <i class="fas fa-code"></i>
                             <span>OpenAI Codex OAuth</span>
                         </button>
-                        <button type="button" class="provider-tag" data-value="grok-custom">
+                        <button type="button" class="provider-tag" data-value="grok-web">
                             <i class="fas fa-search"></i>
-                            <span>Grok Reverse</span>
+                            <span>Grok Web</span>
                         </button>
                     </div>
                     <small class="form-text" data-i18n="config.proxy.enabledProvidersNote">点击选择需要通过代理访问的提供商，未选中的提供商将直接连接</small>
@@ -179,6 +211,27 @@
                         <input type="number" id="maxErrorCount" class="form-control" value="10" min="1" max="20">
                     </div>
                 </div>
+
+                <hr>
+                <div class="config-inline-heading">
+                    <span data-i18n="config.advanced.rateLimitCooldownTitle">429 限流保护</span>
+                    <small data-i18n="config.advanced.rateLimitCooldownNote">上游返回 429 时，让当前账号短暂退出账号池，到期后自动恢复。</small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label data-i18n="config.advanced.rateLimitCooldownEnabled">启用 429 短冷却</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="rateLimitCooldownEnabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="rateLimitCooldownMs" data-i18n="config.advanced.rateLimitCooldownMs">默认冷却时间(毫秒)</label>
+                        <input type="number" id="rateLimitCooldownMs" class="form-control" min="0" step="1000" value="30000">
+                    </div>
+                </div>
+                <hr>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="warmupTarget" data-i18n="config.advanced.warmupTarget">系统预热节点数</label>

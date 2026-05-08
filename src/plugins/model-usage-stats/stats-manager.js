@@ -1,8 +1,11 @@
+import { atomicWriteFile, atomicWriteFileSync } from '../../utils/file-lock.js';
 import { promises as fs } from 'fs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { gitPersistence } from '../../core/git-persistence.js';
 import path from 'path';
 import logger from '../../utils/logger.js';
+import { RateManager } from '../../utils/rate-tracker.js';
+import { getBeijingDateString } from '../../utils/common.js';
 
 const STATS_STORE_FILE = path.join(process.cwd(), 'configs', 'model-usage-stats.json');
 const DEFAULT_CONFIG = {
@@ -18,6 +21,7 @@ let currentPersistInterval = DEFAULT_CONFIG.persistInterval;
 let mutationVersion = 0;
 let persistPromise = null;
 
+const rateManager = new RateManager(60); // 使用 60 秒滑动窗口，更平滑
 const pendingRequests = new Map();
 
 function getTraceRequestId(requestId) {
@@ -35,6 +39,9 @@ function createEmptyUsage() {
         completionTokens: 0,
         totalTokens: 0,
         cachedTokens: 0,
+        maxQps: 0,
+        maxRpm: 0,
+        maxTps: 0,
         lastUsedAt: null
     };
 }
@@ -43,14 +50,24 @@ function createDefaultStore() {
     return {
         updatedAt: null,
         summary: createEmptyUsage(),
-        providers: {}
+        providers: {},
+        daily: {} // 新增每日统计
     };
 }
 
-function normalizeUsageBlock(block = {}) {
+function normalizeUsageBlock(block) {
+    const empty = createEmptyUsage();
+    if (!block || typeof block !== 'object') return empty;
     return {
-        ...createEmptyUsage(),
-        ...block
+        requestCount: toNumber(block.requestCount),
+        promptTokens: toNumber(block.promptTokens),
+        completionTokens: toNumber(block.completionTokens),
+        totalTokens: toNumber(block.totalTokens),
+        cachedTokens: toNumber(block.cachedTokens),
+        maxQps: toNumber(block.maxQps),
+        maxRpm: toNumber(block.maxRpm),
+        maxTps: toNumber(block.maxTps),
+        lastUsedAt: block.lastUsedAt || null
     };
 }
 
@@ -58,7 +75,8 @@ function normalizeStore(store) {
     const normalizedStore = {
         updatedAt: store?.updatedAt || null,
         summary: normalizeUsageBlock(store?.summary),
-        providers: {}
+        providers: {},
+        daily: {} // 新增每日统计
     };
 
     for (const [provider, providerStore] of Object.entries(store?.providers || {})) {
@@ -69,6 +87,12 @@ function normalizeStore(store) {
 
         for (const [model, modelStore] of Object.entries(providerStore?.models || {})) {
             normalizedStore.providers[provider].models[model] = normalizeUsageBlock(modelStore);
+        }
+    }
+
+    if (store?.daily) {
+        for (const [date, dailyStore] of Object.entries(store.daily)) {
+            normalizedStore.daily[date] = normalizeUsageBlock(dailyStore);
         }
     }
 
@@ -130,19 +154,21 @@ function ensureLoaded() {
         if (persistTimer.unref) {
             persistTimer.unref();
         }
-        process.on('beforeExit', () => persistIfDirty());
-        process.on('SIGINT', () => { persistIfDirty(); process.exit(0); });
-        process.on('SIGTERM', () => { persistIfDirty(); process.exit(0); });
+        process.on('beforeExit', () => syncWriteToFile());
+        process.on('SIGINT', () => { syncWriteToFile(); process.exit(0); });
+        process.on('SIGTERM', () => { syncWriteToFile(); process.exit(0); });
     }
 }
 
-function syncWriteToFile() {
+export function syncWriteToFile() {
     try {
+        if (!statsStore || !isDirty) return;
         const dir = path.dirname(STATS_STORE_FILE);
         if (!existsSync(dir)) {
             mkdirSync(dir, { recursive: true });
         }
-        writeFileSync(STATS_STORE_FILE, JSON.stringify(statsStore, null, 2), 'utf8');
+        atomicWriteFileSync(STATS_STORE_FILE, JSON.stringify(statsStore, null, 2), { encoding: 'utf8', mode: 0o600 });
+        isDirty = false;
         gitPersistence.save('Usage stats updated').catch(err => logger.error('[GitPersistence] Stats save failed:', err));
         logger.info('[Model Usage Stats] Sync persisted stats store');
     } catch (error) {
@@ -170,9 +196,8 @@ async function persistIfDirty() {
             while (isDirty) {
                 const versionAtStart = mutationVersion;
                 const snapshot = JSON.stringify(statsStore, null, 2);
-                const tempFile = STATS_STORE_FILE + '.tmp';
-                await fs.writeFile(tempFile, snapshot, 'utf8');
-                await fs.rename(tempFile, STATS_STORE_FILE);
+                
+                await atomicWriteFile(STATS_STORE_FILE, snapshot, { encoding: 'utf8', mode: 0o600 });
 
                 if (mutationVersion === versionAtStart) {
                     isDirty = false;
@@ -220,6 +245,16 @@ function normalizeUsageCandidate(candidate) {
     if (!candidate || typeof candidate !== 'object') {
         return null;
     }
+    if (Array.isArray(candidate)) {
+        const usage = candidate.reduce((merged, item) => mergeUsage(merged, normalizeUsageCandidate(item)), {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            cachedTokens: 0
+        });
+        const hasUsage = usage.promptTokens > 0 || usage.completionTokens > 0 || usage.totalTokens > 0 || usage.cachedTokens > 0;
+        return hasUsage ? usage : null;
+    }
 
     const usage = candidate.usage || candidate.message?.usage || candidate.usageMetadata || candidate.response?.usage || null;
     const reasoningTokens = toNumber(
@@ -251,6 +286,10 @@ function normalizeUsageCandidate(candidate) {
     const cachedTokens = toNumber(
         candidate.cached_tokens ??
         usage?.cached_tokens ??
+        candidate.prompt_tokens_details?.cached_tokens ??
+        candidate.input_tokens_details?.cached_tokens ??
+        usage?.prompt_tokens_details?.cached_tokens ??
+        usage?.input_tokens_details?.cached_tokens ??
         usage?.cache_read_input_tokens ??
         usage?.cachedContentTokenCount
     );
@@ -339,6 +378,9 @@ function resetUsageBlockTokens(block) {
     block.completionTokens = 0;
     block.totalTokens = 0;
     block.cachedTokens = 0;
+    block.maxQps = 0;
+    block.maxRpm = 0;
+    block.maxTps = 0;
 }
 
 export function setConfigGetter(getter) {
@@ -376,6 +418,14 @@ export async function finalizeRequest({ requestId, model, provider, fromProvider
     }
 
     const state = getPendingRequest(requestId, { model, provider, fromProvider, isStream });
+    
+    // 防重逻辑：如果该请求已经处理过速率统计，则直接删除并返回
+    if (state.rateRecorded) {
+        pendingRequests.delete(requestId);
+        return true;
+    }
+    state.rateRecorded = true;
+
     pendingRequests.delete(requestId);
 
     if (!state.hasResponse) {
@@ -383,9 +433,12 @@ export async function finalizeRequest({ requestId, model, provider, fromProvider
         return false;
     }
 
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = now.toISOString();
+    const dateKey = getBeijingDateString();
     const normalizedProvider = state.provider || provider || 'unknown';
     const normalizedModel = state.model || model || 'unknown';
+    
     const usage = {
         promptTokens: state.usage.promptTokens,
         completionTokens: state.usage.completionTokens,
@@ -396,7 +449,32 @@ export async function finalizeRequest({ requestId, model, provider, fromProvider
     applyUsage(statsStore.summary, usage, timestamp);
     applyUsage(ensureProviderStore(normalizedProvider).summary, usage, timestamp);
     applyUsage(ensureModelStore(normalizedProvider, normalizedModel), usage, timestamp);
-    logger.info(`${getTracePrefix(requestId)} >>> Request Finalized: Provider: ${normalizedProvider} | Model: ${normalizedModel} | Prompt: ${usage.promptTokens} | Completion: ${usage.completionTokens} | Total: ${usage.totalTokens} | Cached: ${usage.cachedTokens} | Stream: ${Boolean(state.isStream)}`);
+
+    // 记录速率统计
+    rateManager.record(`provider:${normalizedProvider}`, usage.totalTokens);
+    rateManager.record(`model:${normalizedModel}`, usage.totalTokens);
+
+    const globalRates = rateManager.getGlobalStats();
+    
+    // 更新持久化峰值
+    const updatePeaks = (target) => {
+        target.maxQps = Math.max(target.maxQps || 0, globalRates.qps);
+        target.maxRpm = Math.max(target.maxRpm || 0, globalRates.rpm);
+        target.maxTps = Math.max(target.maxTps || 0, globalRates.tps);
+    };
+
+    updatePeaks(statsStore.summary);
+    updatePeaks(ensureProviderStore(normalizedProvider).summary);
+    updatePeaks(ensureModelStore(normalizedProvider, normalizedModel));
+
+    if (!statsStore.daily[dateKey]) {
+        statsStore.daily[dateKey] = createEmptyUsage();
+    }
+    const dailyBlock = statsStore.daily[dateKey];
+    applyUsage(dailyBlock, usage, timestamp);
+    updatePeaks(dailyBlock);
+
+    logger.info(`${getTracePrefix(requestId)} >>> Request Finalized: Provider: ${normalizedProvider} | Model: ${normalizedModel} | Prompt: ${usage.promptTokens} | Completion: ${usage.completionTokens} | Total: ${usage.totalTokens} | Cached: ${usage.cachedTokens} | Stream: ${Boolean(state.isStream)} | QPS: ${globalRates.qps}`);
     markDirty();
     await persistIfDirty();
     return true;
@@ -404,13 +482,46 @@ export async function finalizeRequest({ requestId, model, provider, fromProvider
 
 export async function getStats() {
     ensureLoaded();
-    return JSON.parse(JSON.stringify(statsStore));
+    const stats = JSON.parse(JSON.stringify(statsStore));
+    
+    // 注入速率统计
+    const globalRates = rateManager.getGlobalStats();
+    stats.summary.qps = globalRates.qps;
+    stats.summary.tps = globalRates.tps;
+    stats.summary.rpm = globalRates.rpm;
+    // 峰值取持久化值和当前内存值中的较大者
+    stats.summary.maxQps = Math.max(stats.summary.maxQps || 0, globalRates.maxQps);
+    stats.summary.maxTps = Math.max(stats.summary.maxTps || 0, globalRates.maxTps);
+    stats.summary.maxRpm = Math.max(stats.summary.maxRpm || 0, globalRates.maxRpm);
+
+    for (const [provider, providerStore] of Object.entries(stats.providers || {})) {
+        const pRates = rateManager.getStats(`provider:${provider}`);
+        providerStore.summary.qps = pRates.qps;
+        providerStore.summary.tps = pRates.tps;
+        providerStore.summary.rpm = pRates.rpm;
+        providerStore.summary.maxQps = Math.max(providerStore.summary.maxQps || 0, pRates.maxQps);
+        providerStore.summary.maxTps = Math.max(providerStore.summary.maxTps || 0, pRates.maxTps);
+        providerStore.summary.maxRpm = Math.max(providerStore.summary.maxRpm || 0, pRates.maxRpm);
+
+        for (const [model, modelStore] of Object.entries(providerStore.models || {})) {
+            const mRates = rateManager.getStats(`model:${model}`);
+            modelStore.qps = mRates.qps;
+            modelStore.tps = mRates.tps;
+            modelStore.rpm = mRates.rpm;
+            modelStore.maxQps = Math.max(modelStore.maxQps || 0, mRates.maxQps);
+            modelStore.maxTps = Math.max(modelStore.maxTps || 0, mRates.maxTps);
+            modelStore.maxRpm = Math.max(modelStore.maxRpm || 0, mRates.maxRpm);
+        }
+    }
+
+    return stats;
 }
 
 export async function resetStats() {
     ensureLoaded();
     statsStore = createDefaultStore();
     pendingRequests.clear();
+    rateManager.clear(); // 同时重置速率统计
     markDirty();
     await persistIfDirty();
     logger.warn('[Model Usage Stats] Stats store reset');
@@ -422,6 +533,12 @@ export async function resetTokenStats() {
 
     resetUsageBlockTokens(statsStore.summary);
 
+    if (statsStore.daily) {
+        for (const dayBlock of Object.values(statsStore.daily)) {
+            resetUsageBlockTokens(dayBlock);
+        }
+    }
+
     for (const providerStore of Object.values(statsStore.providers || {})) {
         resetUsageBlockTokens(providerStore.summary);
 
@@ -431,6 +548,7 @@ export async function resetTokenStats() {
     }
 
     pendingRequests.clear();
+    rateManager.clear(); // 同时重置速率统计
     markDirty();
     await persistIfDirty();
     logger.warn('[Model Usage Stats] Token stats reset');

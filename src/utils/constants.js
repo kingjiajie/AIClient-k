@@ -64,6 +64,26 @@ export const MODEL_PROVIDER = {
     IFLOW_API: 'openai-iflow',
     CODEX_API: 'openai-codex-oauth',
     FORWARD_API: 'forward-api',
-    GROK_CUSTOM: 'grok-custom',
+    GROK_WEB: 'grok-web',
     AUTO: 'auto',
+};
+
+// 图像生成模型常量
+export const SUPPORTED_IMAGE_MODELS = new Set([
+    'gpt-image-2',
+    'grok-imagine-1.0',
+    'grok-imagine-1.0-edit',
+    'gemini-3.1-flash-image'
+]);
+
+// UI 相关的路径常量
+export const UI_PATHS = {
+    // 静态文件和基础路径前缀
+    STATIC_PREFIXES: ['/static/', '/app/', '/components/'],
+    // 静态文件精确匹配路径
+    STATIC_EXACT: ['/', '/favicon.ico', '/index.html', '/login.html'],
+    // API 路径前缀
+    API_PREFIX: '/api/',
+    // API 白名单（即使在禁用 UI 时也允许访问）
+    API_WHITELIST: ['/api/health', '/api/grok/assets', '/api/login', '/api/help', '/api/example']
 };

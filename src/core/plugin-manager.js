@@ -8,6 +8,7 @@
  * 4. 插件配置管理
  */
 
+import { atomicWriteFile } from '../utils/file-lock.js';
 import { promises as fs } from 'fs';
 import logger from '../utils/logger.js';
 import { gitPersistence } from './git-persistence.js';
@@ -163,7 +164,7 @@ class PluginManager {
             if (!existsSync(dir)) {
                 await fs.mkdir(dir, { recursive: true });
             }
-            await fs.writeFile(PLUGINS_CONFIG_FILE, JSON.stringify(this.pluginsConfig, null, 2), 'utf8');
+            await atomicWriteFile(PLUGINS_CONFIG_FILE, JSON.stringify(this.pluginsConfig, null, 2), { encoding: 'utf8', mode: 0o600 });
             // 同步到 GitHub
             await gitPersistence.save('Plugin config updated').catch(err => logger.error('[GitPersistence] Plugin save failed:', err));
         } catch (error) {

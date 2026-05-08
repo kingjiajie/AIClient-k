@@ -34,7 +34,7 @@ class GrokStrategy extends ProviderStrategy {
             return requestBody;
         }
 
-        // Grok reverse interface combines system prompt into message
+        // Grok web interface combines system prompt into message
         // Here we can prepend it if needed, or handle it during request conversion.
         // Since requestBody already contains the converted message, we might need to prepend it here.
         

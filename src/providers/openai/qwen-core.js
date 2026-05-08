@@ -1,3 +1,4 @@
+import { atomicWriteFile } from '../../utils/file-lock.js';
 import axios from 'axios';
 import logger from '../../utils/logger.js';
 import crypto from 'crypto';
@@ -12,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { getProviderModels } from '../provider-models.js';
 import { handleQwenOAuth } from '../../auth/oauth-handlers.js';
 import { configureAxiosProxy, configureTLSSidecar } from '../../utils/proxy-utils.js';
-import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
+import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog, getRetryAfterMs } from '../../utils/common.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
 
 // --- Constants ---
@@ -570,7 +571,7 @@ export class QwenApiService {
         try {
             await fs.mkdir(path.dirname(filePath), { recursive: true });
             const credString = JSON.stringify(credentials, null, 2);
-            await fs.writeFile(filePath, credString);
+            await atomicWriteFile(filePath, credString, { mode: 0o600 });
             logger.info(`[Qwen Auth] Credentials cached to ${filePath}`);
         } catch (error) {
             logger.error(`[Qwen Auth] Failed to cache credentials to ${filePath}: ${error.message}`);
@@ -777,7 +778,21 @@ export class QwenApiService {
                 throw error;
             }
 
-            if ((status === 429 || (status >= 500 && status < 600) || isRetryableNetworkError(error)) && retryCount < maxRetries) {
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[QwenApiService] Received 429 with Retry-After: ${retryAfter}ms. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (retryCount < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[QwenApiService] Received 429 (Too Many Requests). No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return this.callApiWithAuthAndRetry(endpoint, body, isStream, retryCount + 1);
+                }
+            }
+
+            if (((status >= 500 && status < 600) || isRetryableNetworkError(error)) && retryCount < maxRetries) {
                 const delay = baseDelay * Math.pow(2, retryCount);
                 logger.info(`[QwenApiService] Request failed (${status || errorCode}). Retrying in ${delay}ms... (${retryCount + 1}/${maxRetries})`);
                 await new Promise(resolve => setTimeout(resolve, delay));
@@ -1080,7 +1095,7 @@ class SharedTokenManager {
     async saveCredentialsToFile(context, credentials) {
         try {
             await fs.mkdir(path.dirname(context.credentialFilePath), { recursive: true, mode: 0o700 });
-            await fs.writeFile(context.credentialFilePath, JSON.stringify(credentials, null, 2), { mode: 0o600 });
+            await atomicWriteFile(context.credentialFilePath, JSON.stringify(credentials, null, 2), { mode: 0o600 });
             const stats = await fs.stat(context.credentialFilePath);
             context.memoryCache.fileModTime = stats.mtimeMs;
         } catch (error) {

@@ -19,7 +19,8 @@ import {
 } from './file-upload.js';
 
 import { 
-    initNavigation 
+    initNavigation,
+    setSectionLoaders
 } from './navigation.js';
 
 import {
@@ -38,6 +39,7 @@ import {
     loadSystemInfo,
     updateTimeDisplay,
     loadProviders,
+    loadProvidersPageData,
     openProviderManager,
     showAuthModal,
     executeGenerateAuthUrl,
@@ -61,6 +63,11 @@ import {
 } from './routing-examples.js';
 
 import {
+    initAccessManager,
+    loadAccessInfo
+} from './access-manager.js';
+
+import {
     initUploadConfigManager,
     loadConfigList,
     viewConfig,
@@ -72,6 +79,7 @@ import {
 
 import {
     initUsageManager,
+    loadUsagePageData,
     refreshUsage
 } from './usage-manager.js';
 
@@ -81,6 +89,7 @@ import {
 
 import {
     initPluginManager,
+    loadPlugins,
     togglePlugin
 } from './plugin-manager.js';
 
@@ -88,20 +97,34 @@ import {
     initTutorialManager
 } from './tutorial-manager.js';
 
+import {
+    CustomModelsManager
+} from './custom-models-manager.js';
+
+import {
+    initPlaygroundManager,
+    loadPlaygroundData
+} from './playground-manager.js';
+
+let isAppInitialized = false;
+
 /**
  * 加载初始数据
  */
 function loadInitialData() {
     loadSystemInfo();
     loadProviders();
-    loadConfiguration();
-    // showToast('数据已刷新', 'success');
 }
 
 /**
  * 初始化应用
  */
 function initApp() {
+    if (isAppInitialized) {
+        return;
+    }
+    isAppInitialized = true;
+
     // 设置数据加载器
     setDataLoaders(loadInitialData, saveConfiguration);
     
@@ -113,18 +136,33 @@ function initApp() {
     
     // 设置配置加载器
     setConfigLoaders(loadConfigList);
+
+    setSectionLoaders({
+        access: loadAccessInfo,
+        config: loadConfiguration,
+        providers: loadProvidersPageData,
+        'custom-models': () => window.customModelsManager?.load(),
+        'upload-config': loadConfigList,
+        usage: loadUsagePageData,
+        plugins: loadPlugins,
+        playground: loadPlaygroundData
+    });
     
+    // 初始化自定义模型管理
+    window.customModelsManager = new CustomModelsManager();
+
     // 初始化各个模块
     initNavigation();
     initEventListeners();
     initEventStream();
     initFileUpload(); // 初始化文件上传功能
-    initRoutingExamples(); // 初始化路径路由示例功能
+    initAccessManager(); // 初始化快速接入页面
     initUploadConfigManager(); // 初始化配置管理功能
     initUsageManager(); // 初始化用量管理功能
     initImageZoom(); // 初始化图片放大功能
     initPluginManager(); // 初始化插件管理功能
     initTutorialManager(); // 初始化教程管理功能
+    initPlaygroundManager(); // 初始化 Playground
     initMobileMenu(); // 初始化移动端菜单
     loadInitialData();
     
@@ -245,6 +283,7 @@ window.closeConfigModal = closeConfigModal;
 window.copyConfigContent = copyConfigContent;
 window.reloadConfig = reloadConfig;
 window.generateApiKey = generateApiKey;
+window.loadAccessInfo = loadAccessInfo;
 
 // 用量管理相关全局函数
 window.refreshUsage = refreshUsage;

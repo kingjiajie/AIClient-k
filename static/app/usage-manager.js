@@ -1,19 +1,22 @@
 // 用量管理模块
 
-import { showToast } from './utils.js';
+import { showToast, bindOnce } from './utils.js';
 import { getAuthHeaders } from './auth.js';
 import { t, getCurrentLanguage } from './i18n.js';
 
 /**
  * 不支持显示用量数据的提供商列表
  * 这些提供商只显示模型名称和重置时间，不显示用量数字和进度条
+ * 
+ * 注：gemini-antigravity 已支持 remainingPercent，移除限制
  */
 const PROVIDERS_WITHOUT_USAGE_DISPLAY = [
-    'gemini-antigravity'
+    'gemini-antigravity',
 ];
 
 // 提供商配置缓存
 let currentProviderConfigs = null;
+let usagePageDataPromise = null;
 
 /**
  * 更新提供商配置
@@ -21,9 +24,6 @@ let currentProviderConfigs = null;
  */
 export function updateUsageProviderConfigs(configs) {
     currentProviderConfigs = configs;
-    // 重新触发列表加载，以应用最新的可见性过滤、名称和图标
-    loadSupportedProviders();
-    loadUsage();
 }
 
 /**
@@ -40,13 +40,22 @@ function shouldShowUsage(providerType) {
  */
 export function initUsageManager() {
     const refreshBtn = document.getElementById('refreshUsageBtn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', refreshUsage);
+    bindOnce(refreshBtn, 'click', refreshUsage, 'refreshUsage');
+}
+
+export function loadUsagePageData() {
+    if (usagePageDataPromise) {
+        return usagePageDataPromise;
     }
-    
-    // 初始化时自动加载缓存数据
-    loadUsage();
-    loadSupportedProviders();
+
+    usagePageDataPromise = Promise.all([
+        loadUsage(),
+        loadSupportedProviders()
+    ]).finally(() => {
+        usagePageDataPromise = null;
+    });
+
+    return usagePageDataPromise;
 }
 
 /**
@@ -488,7 +497,9 @@ function createInstanceUsageCard(instance, providerType) {
     collapsedSummary.innerHTML = `
         <div class="collapsed-summary-row collapsed-summary-name-row">
             <i class="fas fa-chevron-right usage-toggle-icon"></i>
-            <span class="collapsed-name" title="${displayName}">${displayName}</span>
+            <span class="collapsed-name" title="${displayName} (${t('usage.clickToManage') || '点击管理此节点'})" 
+                  onclick="event.stopPropagation(); window.jumpToProviderNode('${providerType}', '${instance.uuid}', event)"
+                  style="cursor: pointer; transition: color 0.2s;">${displayName}</span>
             ${statusIcon}
         </div>
         ${showUsage ? `
@@ -558,7 +569,9 @@ function createInstanceUsageCard(instance, providerType) {
             </div>
         </div>
         <div class="instance-name">
-            <span class="instance-name-text" title="${instance.name || instance.uuid}">${instance.name || instance.uuid}</span>
+            <span class="instance-name-text" title="${instance.name || instance.uuid} (${t('usage.clickToManage') || '点击管理此节点'})" 
+                  onclick="window.jumpToProviderNode('${providerType}', '${instance.uuid}', event)"
+                  style="cursor: pointer; transition: color 0.2s;">${instance.name || instance.uuid}</span>
         </div>
         ${userInfoHTML}
     `;
@@ -698,21 +711,35 @@ function createUsageBreakdownHTML(breakdown, providerType) {
     // 检查是否应该显示用量信息
     const showUsage = shouldShowUsage(providerType);
 
-    const usagePercent = breakdown.usageLimit > 0
-        ? Math.min(100, (breakdown.currentUsage / breakdown.usageLimit) * 100)
-        : 0;
+    // 优先使用 remainingPercent（antigravity 等提供商提供）
+    const hasRemainingPct = breakdown.remainingPercent !== undefined && breakdown.remainingPercent !== null;
+    const usagePercent = hasRemainingPct
+        ? (100 - breakdown.remainingPercent)
+        : (breakdown.usageLimit > 0
+            ? Math.min(100, (breakdown.currentUsage / breakdown.usageLimit) * 100)
+            : 0);
+    const remainingPercent = hasRemainingPct ? breakdown.remainingPercent : (100 - usagePercent);
+    const progressFillPercent = hasRemainingPct ? remainingPercent : usagePercent;
     
-    const progressClass = usagePercent >= 90 ? 'danger' : (usagePercent >= 70 ? 'warning' : 'normal');
+    const progressClass = remainingPercent <= 10 ? 'danger' : (remainingPercent <= 30 ? 'warning' : 'normal');
+
+    // 显示格式：如果有 remainingPercent，显示剩余百分比；否则显示已用/总量
+    let usageDisplay = '';
+    if (hasRemainingPct) {
+        usageDisplay = `<span class="breakdown-usage">${remainingPercent}%</span>`;
+    } else if (showUsage && breakdown.usageLimit > 0) {
+        usageDisplay = `<span class="breakdown-usage">${formatNumber(breakdown.currentUsage)} / ${formatNumber(breakdown.usageLimit)}</span>`;
+    }
 
     let html = `
         <div class="breakdown-item-compact">
             <div class="breakdown-header-compact">
-                <span class="breakdown-name">${breakdown.displayName || breakdown.resourceType}</span>
-                ${showUsage ? `<span class="breakdown-usage">${formatNumber(breakdown.currentUsage)} / ${formatNumber(breakdown.usageLimit)}</span>` : ''}
+                <span class="breakdown-name">${breakdown.displayName || breakdown.modelName || breakdown.resourceType}</span>
+                ${usageDisplay}
             </div>
             ${showUsage ? `
             <div class="progress-bar-small ${progressClass}">
-                <div class="progress-fill" style="width: ${usagePercent}%"></div>
+                <div class="progress-fill" style="width: ${progressFillPercent}%"></div>
             </div>
             ` : ''}
     `;
@@ -898,7 +925,7 @@ function getProviderDisplayName(providerType) {
         'gemini-antigravity': 'Gemini Antigravity',
         'openai-codex-oauth': 'Codex OAuth',
         'openai-qwen-oauth': 'Qwen OAuth',
-        'grok-custom': 'Grok Reverse'
+        'grok-web': 'Grok Web'
     };
     return names[providerType] || providerType;
 }
@@ -924,7 +951,7 @@ function getProviderIcon(providerType) {
         'gemini-antigravity': 'fas fa-rocket',
         'openai-codex-oauth': 'fas fa-terminal',
         'openai-qwen-oauth': 'fas fa-code',
-        'grok-custom': 'fas fa-brain'
+        'grok-web': 'fas fa-brain'
     };
     return icons[providerType] || 'fas fa-server';
 }

@@ -18,7 +18,7 @@ export class UsageService {
             [MODEL_PROVIDER.GEMINI_CLI]: this.getGeminiUsage.bind(this),
             [MODEL_PROVIDER.ANTIGRAVITY]: this.getAntigravityUsage.bind(this),
             [MODEL_PROVIDER.CODEX_API]: this.getCodexUsage.bind(this),
-            [MODEL_PROVIDER.GROK_CUSTOM]: this.getGrokUsage.bind(this),
+            [MODEL_PROVIDER.GROK_WEB]: this.getGrokUsage.bind(this),
         };
     }
 
@@ -192,7 +192,7 @@ export class UsageService {
      * @returns {Promise<Object>} Grok 用量信息
      */
     async getGrokUsage(uuid = null) {
-        const providerKey = uuid ? MODEL_PROVIDER.GROK_CUSTOM + uuid : MODEL_PROVIDER.GROK_CUSTOM;
+        const providerKey = uuid ? MODEL_PROVIDER.GROK_WEB + uuid : MODEL_PROVIDER.GROK_WEB;
         const adapter = serviceInstances[providerKey];
         
         if (!adapter) {
@@ -550,8 +550,8 @@ export function formatGrokUsage(usageData) {
         
         // 订阅信息
         subscription: {
-            title: 'Grok Custom',
-            type: 'grok-custom',
+            title: 'Grok Web',
+            type: 'grok-web',
             upgradeCapability: null,
             overageCapability: null
         },

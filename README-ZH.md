@@ -2,7 +2,7 @@
 
 <img src="src/img/logo-mid.webp" alt="logo"  style="width: 128px; height: 128px;margin-bottom: 3px;">
 
-# AIClient-2-API 🚀
+# AIClient2API（A2）🚀
 
 **一个能将多种仅客户端内使用的大模型 API（Gemini CLI, Antigravity, Codex, Grok, Kiro ...），模拟请求，统一封装为本地 OpenAI 兼容接口的强大代理。**
 
@@ -23,7 +23,12 @@
 
 </div>
 
+---
+
+
 ## 💎 赞助商
+
+*排序按赞助先后顺序排列，均推荐注册使用。*
 
 <table width="100%">
   <tr>
@@ -36,6 +41,7 @@
       PackyCode 是一家可靠且高效的 API 中转服务商，提供 Claude Code、Codex、Gemini 等模型的中转服务。PackyCode 为本软件用户提供特别优惠：<a href="https://www.packyapi.com/register?aff=AIClient2API">通过此链接注册</a>并在充值时输入 <strong>AIClient2API</strong> 优惠码，即可享受 <strong>10% 的折扣</strong>。
     </td>
   </tr>
+<!--
   <tr>
     <td width="25%" align="center" valign="middle">
       <a href="https://www.aicodemirror.com/register?invitecode=5BUE62">
@@ -43,9 +49,33 @@
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
-      感谢 AICodeMirror 赞助本项目！AICodeMirror 为 Claude Code / Codex / Gemini CLI 提供官方高稳定性中转服务，具备企业级并发能力、快速开票和 7/24 专属技术支持。Claude Code / Codex / Gemini 官方渠道价格仅为原价的 38% / 2% / 9%，充值还有额外优惠！AICodeMirror 为 AIClient-2-API 用户提供专属福利：<a href="https://www.aicodemirror.com/register?invitecode=5BUE62">通过此链接注册</a>即可享受首充 <strong>8折（20% off）</strong> 优惠，企业客户最高可享 75折（25% off）！
+      感谢 AICodeMirror 赞助本项目！AICodeMirror 为 Claude Code / Codex / Gemini CLI 提供官方高稳定性中转服务，具备企业级并发能力、快速开票和 7/24 专属技术支持。Claude Code / Codex / Gemini 官方渠道价格仅为原价的 38% / 2% / 9%，充值还有额外优惠！AICodeMirror 为 AIClient2API 用户提供专属福利：<a href="https://www.aicodemirror.com/register?invitecode=5BUE62">通过此链接注册</a>即可享受首充 <strong>8折（20% off）</strong> 优惠，企业客户最高可享 75折（25% off）！
     </td>
   </tr>
+-->
+<!--
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://poixe.com/i/ebmvga">
+        <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      Poixe AI 提供可靠的 AI 模型接口服务，您可以使用平台提供的 LLM API 接口轻松构建 AI 产品，同时也可以成为供应商，为平台提供大模型资源以赚取收益。<a href="https://poixe.com/i/ebmvga">通过 AIClient2API 专属链接注册</a>，充值额外赠送 <strong>$5 美金</strong>。
+    </td>
+  </tr>
+-->
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://visioncoder.com">
+        <img src="static/visioncoder.png" alt="VisionCoder Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      感谢 VisionCoder 对本项目的支持。VisionCoder 开发平台 是一个可靠高效的 API 中继服务提供商，提供 Claude Code、Codex、Gemini 等主流 AI 模型，帮助开发者和团队更轻松地集成 AI 功能，提升工作效率。VisionCoder 还为我们的用户提供 <a href="https://visioncoder.com">Token Plan</a> 限时活动：<strong>购买 1 个月，赠送 1 个月</strong>。
+    </td>
+  </tr>
+<!--
   <tr>
     <td width="25%" align="center" valign="middle">
       <a href="https://www.lingtrue.com/register?aff=MP34">
@@ -56,16 +86,7 @@
       感谢 LingtrueAPI 对本项目的赞助！LingtrueAPI 是一家全球大模型API中转服务平台，提供Claude opus 4.6、GPT 5.4、Gemini 3.1 pro等多种模型API调用服务，致力于让用户以低成本、高稳定性链接全球AI能力,最大化生产效率。LingtrueAPI为本软件用户提供了特别优惠：<a href="https://www.lingtrue.com/register?aff=MP34">通过此链接注册</a>并在首次充值时输入 <strong>LingtrueAPI</strong> 优惠码即可享受 <strong>9折优惠</strong>。
     </td>
   </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
-      <a href="https://poixe.com/i/ebmvga">
-        <img src="static/poixeai.png" alt="Poixe AI Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      Poixe AI 提供可靠的 AI 模型接口服务，您可以使用平台提供的 LLM API 接口轻松构建 AI 产品，同时也可以成为供应商，为平台提供大模型资源以赚取收益。<a href="https://poixe.com/i/ebmvga">通过 AIClient-2-API 专属链接注册</a>，充值额外赠送 <strong>$5 美金</strong>。
-    </td>
-  </tr>
+-->
   <tr>
     <td width="25%" align="center" valign="middle">
       <img src="static/wechat.png" alt="Sponsor Contact" width="150">
@@ -81,7 +102,7 @@
 
 ## 🚀 项目概览
 
-`AIClient2API` 是一个突破客户端限制的 API 代理服务，将 Gemini、Antigravity、Codex, Grok、Kiro 等原本仅限客户端内使用的免费大模型，转换为可供任何应用调用的标准 OpenAI 兼容接口。基于 Node.js 构建，支持 OpenAI、Claude、Gemini 三大协议的智能互转，让 Cherry-Studio、NextChat、Cline 等工具能够免费大量使用 Claude Opus 4.5、Gemini 3.0 Pro、Qwen3 Coder Plus 等高级模型。项目采用策略模式和适配器模式的模块化架构，内置账号池管理、智能轮询、自动故障转移和健康检查机制，确保 99.9% 的服务可用性。
+`AIClient2API` 是一个突破客户端限制的 API 代理服务，将 Gemini、Antigravity、Codex, Grok、Kiro 等原本仅限客户端内使用的免费大模型，转换为可供任何应用调用的标准 OpenAI 兼容接口。基于 Node.js 构建，支持 OpenAI、Claude、Gemini 三大协议的智能互转，让 Cherry-Studio、NextChat、Cline 等工具能够免费大量使用 Claude Opus 4.5、Gemini 3.0 Pro 等高级模型。项目采用策略模式和适配器模式的模块化架构，内置账号池管理、智能轮询、自动故障转移和健康检查机制，确保 99.9% 的服务可用性。
 
 > [!NOTE]
 > **🎉 重要里程碑**
@@ -93,6 +114,8 @@
 > <details>
 > <summary>点击展开查看详细版本历史</summary>
 > 
+> - **2026.05.04 (v3.0.0)** - **里程碑更新：AI 深度集成与自发现架构**。新增自动化 Skill 指南与远程 `/api/help`、`/api/example` 接口，支持 AI 代理无缝理解并操作 50+ 个全量 API 端点；实现了 CLI 与 REST API 输出结果的完全统一，增强了结构化 JSON 支持。
+> - **2026.04.29** - 全面支持 OpenAI 标准的图片生成 (`/v1/images/generations`) 与编辑 (`/v1/images/edits`) 接口。支持自动将 OpenAI 格式请求转换为各模型对应的原生生图协议，并适配号池轮询与自动重试机制，大幅提升多模态创作的稳定性。
 > - **2026.03.02** - 新增 Grok 协议支持，支持通过 Cookie/SSO 方式访问 xAI Grok 系列模型（Grok 3/4），支持多模态输入、图片/视频生成、自动 token 刷新及流式输出
 > - **2026.01.26** - 新增 Codex 协议支持：支持 OpenAI Codex OAuth 授权接入
 > - **2026.01.25** - 增强 AI 监控插件：支持监控 AI 协议转换前后的请求参数和响应。优化日志管理：统一日志格式，可视化配置
@@ -105,7 +128,6 @@
 > - **2025.11.11** - 新增 Web UI 管理控制台，支持实时配置管理和健康状态监控
 > - **2025.11.06** - 新增对 Gemini 3 预览版的支持，增强模型兼容性和性能优化
 > - **2025.10.18** - Kiro 开放注册，新用户赠送 500 额度，已完整支持 Claude Sonnet 4.5
-> - **2025.09.01** - 集成 Qwen Code CLI，新增 `qwen3-coder-plus` 模型支持
 > - **2025.08.29** - 发布账号池管理功能，支持多账号轮询、智能故障转移和自动降级策略
 >   - 配置方式：在 `configs/config.json` 中添加 `PROVIDER_POOLS_FILE_PATH` 参数
 >   - 参考配置：[provider_pools.json](./configs/provider_pools.json.example)
@@ -117,6 +139,22 @@
 
 ## 💡 核心优势
 
+### 🤖 AI 优先，Agent 交互支持
+
+> **AI 优先设计**：本项目原生支持与 OpenClaw, Hermes, Claude Code 等主流 AI Agent 的高效交互。
+>
+> **💡 快速指令**：你可以直接对 AI 说下面这句话，它将自动掌握本项目的所有用法：
+>
+> - **远程部署**：
+>   ```text
+>   请加载并学习 https://raw.githubusercontent.com/justlovemaki/AIClient2API/main/docs/skills/aiclient-cli-usage.md 中的 Skill（服务地址为你的实际域名或 IP，登录密码为你的实际密码），以掌握 AIClient2API 的所有用法。
+>   ```
+> - **本地模式**：
+>   如果你在本地环境直接运行 AI 代理，可以直接发送：
+>   ```text
+>   请加载并学习本项目的 docs/skills/aiclient-cli-usage.md 这一 Skill，以协助我本地启动、配置并管理 AIClient2API 服务。
+>   ```
+
 ### 🎯 统一接入，一站式管理
 *   **多模型统一接口**：通过标准 OpenAI 兼容协议，一次配置即可接入 Gemini、Claude、Grok、Codex、Kimi K2、MiniMax M2 等主流大模型
 *   **灵活切换机制**：Path 路由、支持通过启动参数、环境变量三种方式动态切换模型，满足不同场景需求
@@ -126,7 +164,7 @@
 ### 🚀 突破限制，提升效率
 *   **绕过官方限制**：利用 OAuth 授权机制，有效突破 Gemini, Antigravity 等服务的免费 API 速率和配额限制
 *   **TLS 指纹绕过**：内置 TLS Sidecar (Go uTLS) 模拟浏览器特征，有效绕过 Grok 等服务的 Cloudflare 403 封锁
-*   **免费高级模型**：通过 Kiro API 模式免费使用 Claude Opus 4.5，通过 Qwen OAuth 模式使用 Qwen3 Coder Plus，降低使用成本
+*   **免费高级模型**：通过 Kiro API 模式免费使用 Claude Opus 4.5，降低使用成本
 *   **账号池智能调度**：支持多账号轮询、自动故障转移和配置降级，确保 99.9% 服务可用性
 
 ### 🛡️ 安全可控，数据透明
@@ -162,7 +200,7 @@
 
 ### 🚀 快速启动
 
-使用 AIClient-2-API 最推荐的方式是通过自动化脚本启动，并直接在 **Web UI 控制台** 进行可视化配置。
+使用 AIClient2API 最推荐的方式是通过自动化脚本启动，并直接在 **Web UI 控制台** 进行可视化配置。
 
 #### 🐳 Docker 快捷启动 (推荐)
 
@@ -199,9 +237,15 @@ docker compose up -d
 > **💡 如果脚本运行失败，可以尝试手动安装依赖并启动：**
 > ```bash
 > npm install
+> # 默认启动
 > npm start
+> # 查看帮助信息
+> npm run help
+> # 查看 API 调用示例
+> npm run example:api
+> # 纯后端模式（禁用前端管理界面）
+> npm start -- --no-ui
 > ```
-
 
 #### 2. 访问控制台
 服务器启动后，打开浏览器访问：
@@ -259,7 +303,7 @@ docker compose up -d
 
 **📊 仪表盘**：系统概览、交互式路由示例、客户端配置指南
 
-**⚙️ 配置管理**：实时参数修改，支持所有提供商（Gemini、Antigravity、OpenAI、Claude、Kiro、Qwen），包含高级设置和文件上传
+**⚙️ 配置管理**：实时参数修改，支持所有提供商（Gemini、Antigravity、OpenAI、Claude、Kiro），包含高级设置和文件上传
 
 **🔗 提供商池**：监控活动连接、提供商健康统计、启用/禁用管理
 
@@ -279,7 +323,6 @@ docker compose up -d
 *   **Grok 3 / Grok 4** - xAI 旗舰模型，现已通过 Grok Cookie/SSO 支持，支持思考模型、图片生成及视频生成
 *   **Claude 4.5 Opus** - Anthropic 史上最强模型，现已通过 Kiro, Antigravity 支持
 *   **Gemini 3 Pro** - Google 下一代架构预览版，现已通过 Gemini, Antigravity 支持
-*   **Qwen3 Coder Plus** - 阿里通义千问最新代码专用模型，现已通过Qwen Code 支持
 *   **Kimi K2 / MiniMax M2** - 国内顶级旗舰模型同步支持，现已通过自定义OpenAI，Claude 支持
 
 ---
@@ -293,8 +336,8 @@ docker compose up -d
 
 #### 🌐 Web UI 快捷授权 (推荐)
 在 Web UI 管理界面中，您可以极速完成授权配置：
-1. **生成授权**：在 **“提供商池”** 页面或**“配置管理”** 页面，点击对应提供商（如 Gemini, Qwen）右上角的 **“生成授权”** 按钮。
-2. **扫码/登录**：系统将弹出授权对话框，您可以点击 **“在浏览器中打开”** 进行登录验证。对于 Qwen，只需完成网页登录；对于 Gemini，Antigravity 需完成 Google 账号授权。
+1. **生成授权**：在 **“提供商池”** 页面或**“配置管理”** 页面，点击对应提供商（如 Gemini）右上角的 **“生成授权”** 按钮。
+2. **扫码/登录**：系统将弹出授权对话框，您可以点击 **“在浏览器中打开”** 进行登录验证。对于 Gemini，Antigravity 需完成 Google 账号授权。
 3. **自动保存**：授权成功后，系统会自动获取凭据并保存至 `configs/` 对应目录下，您可以在 **“配置文件”** 页面看到新生成的凭据。
 4. **可视化管理**：您可以随时在 Web UI 中上传、删除凭据，或通过 **“快速关联”** 功能将已有的凭据文件一键绑定到提供商。
 
@@ -308,16 +351,6 @@ docker compose up -d
 2. **Pro会员**：Antigravity 暂时对 Pro 会员开放，需要先购买 Pro 会员。
 3. **组织账号**：组织账号需要单独授权，联系管理员获取授权。
 
-#### Qwen Code OAuth 配置
-1. **首次授权**：配置Qwen服务后，系统会自动在浏览器中打开授权页面
-2. **推荐参数**：使用官方默认参数以获得最佳效果
-   ```json
-   {
-     "temperature": 0,
-     "top_p": 1
-   }
-   ```
-
 #### Kiro API 配置
 1. **环境准备**：[下载并安装 Kiro 客户端](https://kiro.dev/pricing/)
 2. **完成授权**：在客户端中登录账号，生成 `kiro-auth-token.json` 凭据文件
@@ -325,7 +358,7 @@ docker compose up -d
 4. **重要提示**：Kiro 服务使用政策已更新，请访问官方网站查看最新使用限制和条款
 
 #### Kiro 扩展思考 (Claude 模型)
-AIClient-2-API 在使用路由到 `claude-kiro-oauth` 的 Claude 兼容请求 (`/v1/messages`) 或 OpenAI 兼容请求 (`/v1/chat/completions`) 时支持 Kiro 扩展思考。
+AIClient2API 在使用路由到 `claude-kiro-oauth` 的 Claude 兼容请求 (`/v1/messages`) 或 OpenAI 兼容请求 (`/v1/chat/completions`) 时支持 Kiro 扩展思考。
 
 **Claude 兼容接口 (`/v1/messages`)**:
 ```bash
@@ -398,7 +431,6 @@ curl http://localhost:3000/claude-kiro-oauth/v1/chat/completions \
 |------|---------|------|
 | **Gemini** | `~/.gemini/oauth_creds.json` | OAuth 认证凭据 |
 | **Kiro** | `~/.aws/sso/cache/kiro-auth-token.json` | Kiro 认证令牌 |
-| **Qwen** | `~/.qwen/oauth_creds.json` | Qwen OAuth 凭据 |
 | **Antigravity** | `~/.antigravity/oauth_creds.json` | Antigravity OAuth 凭据 (支持 Claude 4.5 Opus) |
 | **Codex** | `~/.codex/oauth_creds.json` | Codex OAuth 凭据 |
 
@@ -439,10 +471,11 @@ curl http://localhost:3000/claude-kiro-oauth/v1/chat/completions \
         "gemini-cli-oauth",
         "gemini-antigravity",
         "claude-kiro-oauth",
-        "grok-custom"
+        "grok-web"
       ]
-}
-   ```
+    }
+    ```
+
 
 3. **提供商自带代理端点**：某些提供商（如 OpenAI、Claude）支持配置已代理的 API 端点
 
@@ -626,6 +659,7 @@ kill -9 <PID>
 **解决方案**：
 - **配置账号池**：添加多个账号到 `provider_pools.json`，启用轮询机制
 - **配置 Fallback**：在 `config.json` 中配置 `providerFallbackChain`，实现跨类型降级
+- **启用 429 短冷却**：将 `RATE_LIMIT_COOLDOWN_ENABLED` 设为 `true`，并通过 `RATE_LIMIT_COOLDOWN_MS` 设置默认冷却时间，让被限流账号短暂退出账号池后自动恢复
 - **降低请求频率**：适当增加请求间隔，避免触发速率限制
 - **等待配额重置**：免费配额通常每日或每分钟重置
 
@@ -714,6 +748,25 @@ kill -9 <PID>
 - **检查请求频率**：某些提供商对请求频率有严格限制，降低请求频率后重试
 - **查看提供商文档**：访问对应提供商的官方文档，了解具体的访问限制和要求
 
+### 14. 为什么要开启“启用OAuth令牌自动刷新”？
+
+**问题描述**：不确定是否需要开启令牌自动刷新功能。
+
+**解决方案**：
+OAuth 令牌（如 Gemini, Antigravity, Codex）通常有一定的有效期（如 1 小时）。
+- **开启后**：系统会在后台自动检查并刷新即将过期的令牌。这能确保提供 24/7 稳定的 API 服务，避免因令牌过期导致的 `401 Unauthorized` 或 `403 Forbidden` 错误。
+- **不开启**：令牌过期后，系统无法自动获取新令牌，导致 API 请求失败，直到您手动重新进行 OAuth 授权。
+
+### 15. “预加载模型提供商”未开启对 Token 保持有什么影响？
+
+**问题描述**：不理解“预加载模型提供商”配置的作用及其对 Token 的影响。
+
+**解决方案**：
+系统仅会对**已加载到活跃池中**的提供商执行自动刷新任务。
+- **影响**：如果您在配置中未勾选某个提供商作为“预加载模型提供商”，系统启动时不会初始化该提供商。即使开启了“自动刷新”，后台任务也**不会**去刷新这个未激活提供商的令牌。
+- **后果**：如果您长时间不使用该提供商，其 Token 会在后台静默过期。当您偶尔通过特定路由调用它时，会因为 Token 过期而请求失败。
+- **建议**：对于需要长期稳定使用的提供商，请务必在“预加载模型提供商”中进行勾选。
+
 </details>
 
 ---
@@ -726,7 +779,7 @@ kill -9 <PID>
 本项目的开发受到了官方 Google Gemini CLI 的极大启发，并参考了Cline 3.18.0 版本 `gemini-cli.ts` 的部分代码实现。在此对 Google 官方团队和 Cline 开发团队的卓越工作表示衷心的感谢！
 ### 贡献者列表
 
-感谢以下所有为 AIClient-2-API 项目做出贡献的开发者：
+感谢以下所有为 AIClient2API 项目做出贡献的开发者：
 
 [![Contributors](https://contrib.rocks/image?repo=justlovemaki/AIClient-2-API)](https://github.com/justlovemaki/AIClient-2-API/graphs/contributors)
 
@@ -741,7 +794,7 @@ kill -9 <PID>
 ## ⚠️ 免责声明
 
 ### 使用风险提示
-本项目（AIClient-2-API）仅供学习和研究使用。用户在使用本项目时，应自行承担所有风险。作者不对因使用本项目而导致的任何直接、间接或 consequential 损失承担责任。
+本项目（AIClient2API）仅供学习和研究使用。用户在使用本项目时，应自行承担所有风险。作者不对因使用本项目而导致的任何直接、间接或 consequential 损失承担责任。
 
 ### 第三方服务责任说明
 本项目是一个API代理工具，不提供任何AI模型服务。所有AI模型服务由相应的第三方提供商（如Google、OpenAI、Anthropic等）提供。用户在使用本项目访问这些第三方服务时，应遵守各第三方服务的使用条款和政策。作者不对第三方服务的可用性、质量、安全性或合法性承担责任。

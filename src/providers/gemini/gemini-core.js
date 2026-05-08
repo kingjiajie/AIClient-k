@@ -1,3 +1,4 @@
+import { atomicWriteFile } from '../../utils/file-lock.js';
 import { OAuth2Client } from 'google-auth-library';
 import logger from '../../utils/logger.js';
 import * as http from 'http';
@@ -8,10 +9,10 @@ import * as os from 'os';
 import * as readline from 'readline';
 import open from 'open';
 import { configureTLSSidecar } from '../../utils/proxy-utils.js';
-import { API_ACTIONS, formatExpiryTime, isRetryableNetworkError, formatExpiryLog } from '../../utils/common.js';
+import { API_ACTIONS, formatExpiryTime, isRetryableNetworkError, formatExpiryLog, getRetryAfterMs } from '../../utils/common.js';
 import { getProviderModels } from '../provider-models.js';
 import { handleGeminiCliOAuth } from '../../auth/oauth-handlers.js';
-import { getProxyConfigForProvider, getGoogleAuthProxyConfig } from '../../utils/proxy-utils.js';
+import { getProxyConfigForProvider, getGoogleAuthProxyConfig, isTLSSidecarEnabledForProvider } from '../../utils/proxy-utils.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
 import { MODEL_PROVIDER } from '../../utils/common.js';
 
@@ -44,55 +45,14 @@ function applyGeminiCLIHeaders(headers, model) {
     headers['X-Goog-Api-Client'] = GEMINI_CLI_API_CLIENT_HEADER;
 }
 
-
-/**
- * 从 Google API 的 429 错误响应中提取重试延迟
- * @param {Object|string} errorBody - 错误响应体
- * @returns {number|null} 延迟毫秒数
- */
-function parseRetryDelay(errorBody) {
-    try {
-        const data = typeof errorBody === 'string' ? JSON.parse(errorBody) : errorBody;
-        const details = data?.error?.details;
-        if (Array.isArray(details)) {
-            for (const detail of details) {
-                if (detail['@type'] === 'type.googleapis.com/google.rpc.RetryInfo') {
-                    const retryDelay = detail.retryDelay;
-                    if (retryDelay) {
-                        const match = retryDelay.match(/^([\d.]+)s$/);
-                        if (match) return parseFloat(match[1]) * 1000;
-                    }
-                }
-            }
-            for (const detail of details) {
-                if (detail['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo') {
-                    const quotaResetDelay = detail.metadata?.quotaResetDelay;
-                    if (quotaResetDelay) {
-                        const match = quotaResetDelay.match(/^([\d.]+)(ms|s)$/);
-                        if (match) {
-                            let ms = parseFloat(match[1]);
-                            if (match[2] === 's') ms *= 1000;
-                            return ms;
-                        }
-                    }
-                }
-            }
-        }
-        const message = data?.error?.message;
-        if (message) {
-            const match = message.match(/after\s+(\d+)s\.?/);
-            if (match) return parseInt(match[1]) * 1000;
-        }
-    } catch (e) {}
-    return null;
-}
-
 function is_anti_truncation_model(model) {
+    if (!model) return false;
     return ANTI_TRUNCATION_MODELS.some(antiModel => model.includes(antiModel));
 }
 
 // 从防截断模型名中提取实际模型名
 function extract_model_from_anti_model(model) {
+    if (!model) return model;
     if (model.startsWith('anti-')) {
         const originalModel = model.substring(5); // 移除 'anti-' 前缀
         if (GEMINI_MODELS.includes(originalModel)) {
@@ -101,6 +61,7 @@ function extract_model_from_anti_model(model) {
     }
     return model; // 如果不是anti-前缀或不在原模型列表中，则返回原模型名
 }
+
 
 function modelSupportsThinking(modelName) {
     if (!modelName) return false;
@@ -307,13 +268,18 @@ export class GeminiApiService {
         // 检查是否需要使用代理
         const proxyConfig = getGoogleAuthProxyConfig(config, config.MODEL_PROVIDER || MODEL_PROVIDER.GEMINI_CLI);
         
+        // 检查是否启用了 TLS Sidecar
+        const isTLSSidecarEnabled = isTLSSidecarEnabledForProvider(config, config.MODEL_PROVIDER || MODEL_PROVIDER.GEMINI_CLI);
+        
         // 配置 OAuth2Client 使用自定义的 HTTP agent
         const oauth2Options = {
             clientId: OAUTH_CLIENT_ID,
             clientSecret: OAUTH_CLIENT_SECRET,
         };
         
-        if (proxyConfig) {
+        if (isTLSSidecarEnabled) {
+            logger.info('[Gemini] TLS Sidecar enabled, skipping proxy/agent configuration for OAuth2Client');
+        } else if (proxyConfig) {
             oauth2Options.transporterOptions = proxyConfig;
             logger.info('[Gemini] Using proxy for OAuth2Client');
         } else {
@@ -598,13 +564,13 @@ export class GeminiApiService {
             logger.error(`[Gemini API] Error calling (Status: ${status}, Code: ${errorCode}):`, errorMessage);
 
             // Handle 401 (Unauthorized) - refresh auth and retry once
-            if ((status === 400 || status === 401) && !isRetry) {
-                logger.info('[Gemini API] Received 401/400. Triggering background refresh via PoolManager...');
+            if ((status === 401) && !isRetry) {
+                logger.info('[Gemini API] Received 401 Unauthorized. Triggering background refresh via PoolManager...');
                 
                 // 标记当前凭证为不健康（会自动进入刷新队列）
                 const poolManager = getProviderPoolManager();
                 if (poolManager && this.uuid) {
-                    logger.info(`[Gemini] Marking credential ${this.uuid} as needs refresh. Reason: 401/400 Unauthorized`);
+                    logger.info(`[Gemini] Marking credential ${this.uuid} as needs refresh. Reason: 401 Unauthorized`);
                     poolManager.markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GEMINI_CLI, {
                         uuid: this.uuid
                     });
@@ -617,12 +583,19 @@ export class GeminiApiService {
                 throw error;
             }
 
-            // Handle 429 (Too Many Requests) with exponential backoff
-            if (status === 429 && retryCount < maxRetries) {
-                const delay = parseRetryDelay(error.response?.data) || (baseDelay * Math.pow(2, retryCount));
-                logger.info(`[Gemini API] Received 429 (Too Many Requests). Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return this.callApi(method, body, isRetry, retryCount + 1, model);
+            // Handle 429 (Too Many Requests)
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[Gemini API] Received 429 with Retry-After: ${retryAfter}ms. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (retryCount < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[Gemini API] Received 429 (Too Many Requests). No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return this.callApi(method, body, isRetry, retryCount + 1, model);
+                }
             }
 
             // Handle other retryable errors (5xx server errors)
@@ -681,13 +654,13 @@ export class GeminiApiService {
             logger.error(`[Gemini API] Error during stream (Status: ${status}, Code: ${errorCode}):`, errorMessage);
 
             // Handle 401 (Unauthorized) - refresh auth and retry once
-            if ((status === 400 || status === 401) && !isRetry) {
-                logger.info('[Gemini API] Received 401/400 during stream. Triggering background refresh via PoolManager...');
+            if ((status === 401) && !isRetry) {
+                logger.info('[Gemini API] Received 401 Unauthorized during stream. Triggering background refresh via PoolManager...');
                 
                 // 标记当前凭证为不健康（会自动进入刷新队列）
                 const poolManager = getProviderPoolManager();
                 if (poolManager && this.uuid) {
-                    logger.info(`[Gemini] Marking credential ${this.uuid} as needs refresh. Reason: 401/400 Unauthorized in stream`);
+                    logger.info(`[Gemini] Marking credential ${this.uuid} as needs refresh. Reason: 401 Unauthorized in stream`);
                     poolManager.markProviderNeedRefresh(this.config.MODEL_PROVIDER || MODEL_PROVIDER.GEMINI_CLI, {
                         uuid: this.uuid
                     });
@@ -700,13 +673,20 @@ export class GeminiApiService {
                 throw error;
             }
 
-            // Handle 429 (Too Many Requests) with exponential backoff
-            if (status === 429 && retryCount < maxRetries) {
-                const delay = parseRetryDelay(error.response?.data) || (baseDelay * Math.pow(2, retryCount));
-                logger.info(`[Gemini API] Received 429 (Too Many Requests) during stream. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                yield* this.streamApi(method, body, isRetry, retryCount + 1, model);
-                return;
+            // Handle 429 (Too Many Requests)
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[Gemini API] Received 429 with Retry-After: ${retryAfter}ms during stream. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (retryCount < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[Gemini API] Received 429 (Too Many Requests) during stream. No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    yield* this.streamApi(method, body, isRetry, retryCount + 1, model);
+                    return;
+                }
             }
 
             // Handle other retryable errors (5xx server errors)
@@ -874,7 +854,7 @@ export class GeminiApiService {
      */
     async _saveCredentialsToFile(filePath, credentials) {
         try {
-            await fs.writeFile(filePath, JSON.stringify(credentials, null, 2));
+            await atomicWriteFile(filePath, JSON.stringify(credentials, null, 2), { mode: 0o600 });
             logger.info(`[Gemini Auth] Credentials saved to ${filePath}`);
         } catch (error) {
             logger.error(`[Gemini Auth] Failed to save credentials to ${filePath}: ${error.message}`);

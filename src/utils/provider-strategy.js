@@ -70,10 +70,15 @@ export class ProviderStrategy {
         }
 
         try {
-            if (incomingSystemText && incomingSystemText !== currentSystemText) {
-                await fs.writeFile(FETCH_SYSTEM_PROMPT_FILE, incomingSystemText);
+            let textToWrite = incomingSystemText;
+            if (typeof textToWrite === 'object' && textToWrite !== null) {
+                textToWrite = JSON.stringify(textToWrite);
+            }
+
+            if (textToWrite !== undefined && textToWrite !== null && textToWrite !== currentSystemText) {
+                await fs.writeFile(FETCH_SYSTEM_PROMPT_FILE, textToWrite);
                 logger.info(`[System Prompt Manager] System prompt updated in file for provider '${providerName}'.`);
-            } else if (!incomingSystemText && currentSystemText) {
+            } else if ((textToWrite === '' || textToWrite === undefined || textToWrite === null) && currentSystemText) {
                 await fs.writeFile(FETCH_SYSTEM_PROMPT_FILE, '');
                 logger.info('[System Prompt Manager] System prompt cleared from file.');
             }

@@ -13,6 +13,7 @@ import {
     getFileName,
     formatSystemPath
 } from '../utils/provider-utils.js';
+import { withFileLock, atomicWriteFile } from '../utils/file-lock.js';
 import { MODEL_PROVIDER } from '../utils/constants.js';
 
 // 存储 ProviderPoolManager 实例
@@ -88,7 +89,9 @@ export async function autoLinkProviderConfigs(config, options = {}) {
     if (totalNewProviders > 0) {
         const filePath = config.PROVIDER_POOLS_FILE_PATH || 'configs/provider_pools.json';
         try {
-            await pfs.writeFile(filePath, JSON.stringify(config.providerPools, null, 2), 'utf8');
+            await withFileLock(filePath, async () => {
+                await atomicWriteFile(filePath, JSON.stringify(config.providerPools, null, 2), 'utf8');
+            });
             logger.info(`[Auto-Link] Added ${totalNewProviders} new config(s) to provider pools:`);
             for (const [displayName, providers] of Object.entries(allNewProviders)) {
                 logger.info(`  ${displayName}: ${providers.length} config(s)`);
@@ -560,10 +563,12 @@ export async function getProviderStatus(config, options = {}) {
         logger.warn('[API Service] Failed to load provider pools:', error.message);
     }
 
-    // providerPoolsSlim 只保留顶级 key 及部分字段，过滤 isDisabled 为 true 的元素
+    // providerPoolsSlim 只保留顶级 key 及部分字段
     const slimFields = [
+        'uuid',
         'customName',
         'isHealthy',
+        'isDisabled',
         'lastErrorTime',
         'lastErrorMessage',
         'needsRefresh'
@@ -579,7 +584,7 @@ export async function getProviderStatus(config, options = {}) {
         'gemini-antigravity': 'ANTIGRAVITY_OAUTH_CREDS_FILE_PATH',
         'openai-iflow': 'IFLOW_TOKEN_FILE_PATH',
         'forward-api': 'FORWARD_BASE_URL',
-        'grok-custom': 'GROK_COOKIE_TOKEN',
+        'grok-web': 'GROK_COOKIE_TOKEN',
         'openai-codex-oauth': 'CODEX_OAUTH_CREDS_FILE_PATH'
     };
     let providerPoolsSlim = [];
@@ -617,8 +622,8 @@ export async function getProviderStatus(config, options = {}) {
                 }
                 // identify 字段
                 if (identifyField && item.hasOwnProperty(identifyField)) {
-                    let tmpCustomName = item.customName ? `${item.customName}` : 'NoCustomName';
-                    let identifyStr = `${tmpCustomName}::${key}::${item[identifyField]}`;
+                    let tmpCustomName = item.customName ? `${item.customName}` : (item.uuid || 'NoUUID');
+                    let identifyStr = `${tmpCustomName}::${key}`;
                     slim.identify = identifyStr;
                 } else {
                     slim.identify = null;

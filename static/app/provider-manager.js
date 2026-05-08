@@ -1,7 +1,7 @@
 // 提供商管理功能模块
 
 import { providerStats, updateProviderStats } from './constants.js';
-import { showToast, formatUptime, getProviderConfigs, getBaseProviderConfigs } from './utils.js';
+import { showToast, formatUptime, getProviderConfigs, getBaseProviderConfigs, bindOnce } from './utils.js';
 import { fileUploadHandler } from './file-upload.js';
 import { t, getCurrentLanguage } from './i18n.js';
 import { renderRoutingExamples } from './routing-examples.js';
@@ -18,6 +18,85 @@ let initialUptime = null;
 let initialLoadTime = null;
 let isStaticProviderConfigsUpdated = false;
 let cachedSupportedProviders = null;
+let latestProvidersAccessInfo = null;
+
+function navigateToSection(sectionId) {
+    const navItem = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+    if (navItem) {
+        navItem.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        return;
+    }
+
+    window.location.hash = `#${sectionId}`;
+}
+
+function initProvidersPageHelpers() {
+    const openAccessBtn = document.getElementById('providersOpenQuickAccess');
+    bindOnce(openAccessBtn, 'click', () => navigateToSection('access'), 'providersOpenQuickAccess');
+
+    const openConfigBtn = document.getElementById('providersOpenConfig');
+    bindOnce(openConfigBtn, 'click', () => navigateToSection('config'), 'providersOpenConfig');
+}
+
+function updateProvidersHandoffSummary(providers = {}, supportedProviders = []) {
+    const providerGroups = Object.values(providers).filter(group => Array.isArray(group) && group.length > 0);
+    const totalGroups = providerGroups.length;
+    const allNodes = providerGroups.flat();
+    const totalNodes = allNodes.length;
+    const healthyNodes = allNodes.filter(node => node.isHealthy && !node.isDisabled).length;
+
+    const groupsEl = document.getElementById('providersHandoffGroups');
+    const healthyEl = document.getElementById('providersHandoffHealthyNodes');
+    const defaultsEl = document.getElementById('providersHandoffDefaults');
+    const nextStepEl = document.getElementById('providersHandoffNextStep');
+
+    if (groupsEl) {
+        groupsEl.textContent = totalGroups > 0
+            ? t('providers.handoff.groupsReady', { count: totalGroups })
+            : t('providers.handoff.groupsMissing');
+    }
+
+    if (healthyEl) {
+        healthyEl.textContent = totalNodes > 0
+            ? t('providers.handoff.healthyReady', { healthy: healthyNodes, total: totalNodes })
+            : t('providers.handoff.healthyMissing');
+    }
+
+    const providerConfigs = getProviderConfigs(supportedProviders);
+    const configMap = providerConfigs.reduce((map, config) => {
+        map[config.id] = config;
+        return map;
+    }, {});
+    const defaultProviders = latestProvidersAccessInfo?.defaultProviders || [];
+    const defaultProviderNames = defaultProviders.map(id => configMap[id]?.name || id);
+
+    if (defaultsEl) {
+        defaultsEl.textContent = defaultProviderNames.length > 0
+            ? defaultProviderNames.join(' / ')
+            : t('providers.handoff.defaultsMissing');
+    }
+
+    if (nextStepEl) {
+        if (totalNodes === 0) {
+            nextStepEl.textContent = t('providers.handoff.nextStepAddNodes');
+        } else if (defaultProviderNames.length === 0) {
+            nextStepEl.textContent = t('providers.handoff.nextStepConfig');
+        } else {
+            nextStepEl.textContent = t('providers.handoff.nextStepAccess');
+        }
+    }
+}
+
+async function refreshProvidersHandoffSummary(providers = {}, supportedProviders = []) {
+    try {
+        latestProvidersAccessInfo = await window.apiClient.get('/access-info');
+    } catch (error) {
+        console.warn('Failed to load provider handoff summary:', error);
+        latestProvidersAccessInfo = null;
+    }
+
+    updateProvidersHandoffSummary(providers, supportedProviders);
+}
 
 /**
  * 加载系统信息
@@ -183,6 +262,7 @@ function updateTimeDisplay() {
  */
 async function loadProviders(forceRefreshSupported = false) {
     try {
+        initProvidersPageHelpers();
         // 获取合并后的数据（包括 providers 和 supportedProviders）
         const data = await window.apiClient.get('/providers');
         if (!data || !data.providers) return;
@@ -213,8 +293,16 @@ async function loadProviders(forceRefreshSupported = false) {
         }
 
         renderProviders(providers, cachedSupportedProviders);
+        return data;
     } catch (error) {
         console.error('Failed to load providers:', error);
+    }
+}
+
+async function loadProvidersPageData(forceRefreshSupported = false) {
+    const data = await loadProviders(forceRefreshSupported);
+    if (data?.providers) {
+        await refreshProvidersHandoffSummary(data.providers, data.supportedProviders || cachedSupportedProviders || []);
     }
 }
 
@@ -267,6 +355,10 @@ function renderProviders(providers, supportedProviders = []) {
     let totalAccounts = 0;
     let totalHealthy = 0;
     
+    // 获取搜索关键词
+    const searchInput = document.getElementById('providerSearchInput');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
     // 按照排序后的提供商类型渲染
     sortedProviderTypes.forEach((providerType) => {
         // 如果配置中明确设置为不显示，则跳过
@@ -275,6 +367,22 @@ function renderProviders(providers, supportedProviders = []) {
         }
 
         const accounts = hasProviders ? providers[providerType] || [] : [];
+
+        // 搜索过滤逻辑
+        if (searchTerm) {
+            const displayName = (configMap[providerType]?.name || providerType).toLowerCase();
+            const matchesType = displayName.includes(searchTerm) || providerType.toLowerCase().includes(searchTerm);
+            const matchesNodes = accounts.some(acc => 
+                (acc.customName || '').toLowerCase().includes(searchTerm) || 
+                (acc.uuid || '').toLowerCase().includes(searchTerm) ||
+                (acc.model || '').toLowerCase().includes(searchTerm)
+            );
+            
+            if (!matchesType && !matchesNodes) {
+                return;
+            }
+        }
+
         const providerDiv = document.createElement('div');
         providerDiv.className = 'provider-item';
         providerDiv.dataset.providerType = providerType;
@@ -429,6 +537,134 @@ function renderProviders(providers, supportedProviders = []) {
     // 更新统计卡片数据
     const activeProviders = hasProviders ? Object.keys(providers).length : 0;
     updateProviderStatsDisplay(activeProviders, totalHealthy, totalAccounts);
+
+    // 渲染仪表盘提供商状态概览
+    renderProviderStatusOverview(providers, configMap, sortedProviderTypes);
+}
+
+/**
+ * 跳转到特定的提供商节点
+ * @param {string} type - 提供商类型
+ * @param {string} uuid - 节点UUID
+ * @param {Event} event - 事件对象
+ */
+window.jumpToProviderNode = function(type, uuid, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
+    // 切换到提供商页面
+    const providersNav = document.querySelector('[data-section="providers"]');
+    if (providersNav) {
+        providersNav.click();
+        // 延迟执行以确保页面切换完成
+        setTimeout(() => {
+            openProviderManager(type, uuid);
+        }, 100);
+    }
+};
+
+/**
+ * 渲染仪表盘提供商状态概览
+ * @param {Object} providers - 提供商数据
+ * @param {Object} configMap - 提供商配置映射
+ * @param {Array} sortedProviderTypes - 排序后的提供商类型
+ */
+function renderProviderStatusOverview(providers, configMap, sortedProviderTypes) {
+    const grid = document.getElementById('providerStatusGrid');
+    const panel = document.querySelector('.provider-status-panel');
+    if (!grid || !panel) return;
+
+    // 检查是否有任何实际可显示的提供商节点
+    let hasVisibleNodes = false;
+    const validProviderTypes = [];
+
+    sortedProviderTypes.forEach(type => {
+        const accounts = providers[type] || [];
+        if (accounts.length > 0) {
+            hasVisibleNodes = true;
+            validProviderTypes.push(type);
+        }
+    });
+
+    if (!hasVisibleNodes) {
+        panel.style.display = 'none';
+        
+        // 没有数据时，自动展开仪表盘的高级信息（路径路由示例等）
+        const dashboardDetails = document.querySelector('.dashboard-details');
+        if (dashboardDetails) {
+            dashboardDetails.open = true;
+        }
+        return;
+    }
+
+    panel.style.display = 'block';
+    grid.innerHTML = '';
+
+    validProviderTypes.forEach(type => {
+        const accounts = providers[type];
+        const displayName = configMap[type]?.name || type;
+        const card = document.createElement('div');
+        card.className = 'provider-status-card';
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => {
+            // 点击跳转到提供商管理页面并打开对应类型的管理弹窗
+            const providersNav = document.querySelector('[data-section="providers"]');
+            if (providersNav) {
+                providersNav.click();
+                setTimeout(() => openProviderManager(type), 100);
+            }
+        });
+
+        const healthyCount = accounts.filter(acc => acc.isHealthy && !acc.isDisabled).length;
+        const totalCount = accounts.length;
+        const disabledCount = accounts.filter(acc => acc.isDisabled).length;
+        const unhealthyCount = totalCount - healthyCount - disabledCount;
+
+        const totalUsage = accounts.reduce((sum, acc) => sum + (acc.usageCount || 0), 0);
+        const totalErrors = accounts.reduce((sum, acc) => sum + (acc.errorCount || 0), 0);
+
+        card.innerHTML = `
+            <div class="provider-info">
+                <span class="provider-name" title="${displayName}">${displayName}</span>
+                <span class="provider-count" style="font-size: 0.75rem; color: var(--text-secondary);">${healthyCount}/${totalCount}</span>
+            </div>
+            
+            <div class="provider-nodes-summary">
+                <span style="color: #10b981;"><i class="fas fa-check"></i> ${healthyCount}</span>
+                <span style="color: #ef4444; ${unhealthyCount === 0 ? 'opacity: 0.3;' : ''}"><i class="fas fa-times"></i> ${unhealthyCount}</span>
+                <span style="color: #9ca3af; ${disabledCount === 0 ? 'opacity: 0.3;' : ''}"><i class="fas fa-minus-circle"></i> ${disabledCount}</span>
+            </div>
+
+            <div class="node-dots">
+                ${accounts.map(acc => {
+                    let statusClass = 'healthy';
+                    let statusTitle = acc.customName || acc.uuid;
+                    if (acc.isDisabled) {
+                        statusClass = 'disabled';
+                        statusTitle += ` (${t('modal.provider.status.disabled')})`;
+                    } else if (!acc.isHealthy) {
+                        statusClass = 'unhealthy';
+                        statusTitle += ` (${t('modal.provider.status.unhealthy')})`;
+                    } else {
+                        statusTitle += ` (${t('modal.provider.status.healthy')})`;
+                    }
+                    // 增加提示信息：用量和错误
+                    statusTitle += `\n${t('providers.stat.usageCount')}: ${acc.usageCount || 0}\n${t('providers.stat.errorCount')}: ${acc.errorCount || 0}`;
+                    
+                    // 为圆点创建 HTML 字符串，添加点击跳转事件
+                    return `<span class="node-dot ${statusClass}" title="${statusTitle}" onclick="window.jumpToProviderNode('${type}', '${acc.uuid}', event)"></span>`;
+                }).join('')}
+            </div>
+            <div class="provider-stats-summary">
+                <span><i class="fas fa-paper-plane" style="font-size: 0.7rem; opacity: 0.7;"></i> ${totalUsage}</span>
+                <span><i class="fas fa-exclamation-circle" style="font-size: 0.7rem; opacity: 0.7;"></i> ${totalErrors}</span>
+                <span class="success-rate">${totalUsage > 0 ? ((totalUsage - totalErrors) / totalUsage * 100).toFixed(1) + '%' : '--'}</span>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
 }
 
 /**
@@ -501,11 +737,16 @@ function updateProviderStatsDisplay(activeProviders, healthyProviders, totalAcco
  * 打开提供商管理模态框
  * @param {string} providerType - 提供商类型
  */
-async function openProviderManager(providerType) {
+/**
+ * 打开提供商管理模态框
+ * @param {string} providerType - 提供商类型
+ * @param {string} searchTerm - 初始搜索词
+ */
+async function openProviderManager(providerType, searchTerm = '') {
     try {
         const data = await window.apiClient.get(`/providers/${encodeURIComponent(providerType)}`);
         
-        showProviderManagerModal(data);
+        showProviderManagerModal(data, searchTerm);
     } catch (error) {
         console.error('Failed to load provider details:', error);
         showToast(t('common.error'), t('modal.provider.load.failed'), 'error');
@@ -518,8 +759,8 @@ async function openProviderManager(providerType) {
  * @returns {string} 授权按钮HTML
  */
 function generateAuthButton(providerType) {
-    // 只为支持OAuth的提供商显示授权按钮
-    const oauthProviders = ['gemini-cli-oauth', 'gemini-antigravity', 'openai-qwen-oauth', 'claude-kiro-oauth', 'openai-iflow', 'openai-codex-oauth'];
+    // 只为支持OAuth或批量导入的提供商显示授权按钮
+    const oauthProviders = ['gemini-cli-oauth', 'gemini-antigravity', 'openai-qwen-oauth', 'claude-kiro-oauth', 'openai-iflow', 'openai-codex-oauth', 'grok-web'];
 
     if (!oauthProviders.includes(providerType)) {
         return '';
@@ -554,9 +795,7 @@ function showSimplePrompt(title, placeholder, callback) {
     overlay.className = 'modal-overlay';
     overlay.style.display = 'flex';
     overlay.style.zIndex = '3000';
-    overlay.style.background = 'rgba(0, 0, 0, 0.2)';
-    overlay.style.backdropFilter = 'blur(2px)';
-    
+
     overlay.innerHTML = `
         <div class="modal-content" style="max-width: 320px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid var(--border-color); padding: 20px;">
             <div style="margin-bottom: 12px; font-weight: 600; font-size: 14px; color: var(--text-primary);">${title}</div>
@@ -634,6 +873,12 @@ async function handleGenerateAuthUrl(providerType) {
         return;
     }
 
+    // 如果是 Grok，显示认证方式选择对话框（目前仅支持批量导入，因为没有标准 OAuth）
+    if (providerType === 'grok-web') {
+        showGrokAuthMethodSelector(providerType);
+        return;
+    }
+
     await executeGenerateAuthUrl(providerType, {});
 }
 
@@ -655,10 +900,10 @@ function showCodexAuthMethodSelector(providerType) {
             <div class="modal-body">
                 <div class="auth-method-options" style="display: flex; flex-direction: column; gap: 12px;">
                     <button class="auth-method-btn" data-method="oauth" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
-                        <i class="fab fa-google" style="font-size: 24px; color: #4285f4;"></i>
+                        <i class="fas fa-key" style="font-size: 24px; color: #10b981;"></i>
                         <div style="text-align: left;">
-                            <div style="font-weight: 600; color: #333;" data-i18n="oauth.gemini.oauth">${t('oauth.gemini.oauth')}</div>
-                            <div style="font-size: 12px; color: #666;" data-i18n="oauth.gemini.oauthDesc">${t('oauth.gemini.oauthDesc')}</div>
+                            <div style="font-weight: 600; color: #333;" data-i18n="oauth.codex.oauth">${t('oauth.codex.oauth')}</div>
+                            <div style="font-size: 12px; color: #666;" data-i18n="oauth.codex.oauthDesc">${t('oauth.codex.oauthDesc')}</div>
                         </div>
                     </button>
                     <button class="auth-method-btn" data-method="batch-import" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
@@ -842,7 +1087,7 @@ function showCodexBatchImportModal(providerType) {
     });
     
     // 提交按钮事件
-    submitBtn.addEventListener('click', async () => {
+    submitBtn.onclick = async () => {
         let tokens = [];
         try {
             const val = textarea.value.trim();
@@ -998,10 +1243,360 @@ function showCodexBatchImportModal(providerType) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = `<i class="fas fa-upload"></i> <span data-i18n="oauth.codex.startImport">${t('oauth.codex.startImport')}</span>`;
             } else {
-                submitBtn.innerHTML = `<i class="fas fa-check-circle"></i> <span>${t('common.success')}</span>`;
+                submitBtn.innerHTML = `<i class="fas fa-check"></i> <span>${t('common.confirm')}</span>`;
+                submitBtn.disabled = false;
+                submitBtn.onclick = () => modal.remove();
+                cancelBtn.style.display = 'none';
             }
         }
+    };
+}
+
+/**
+ * 显示 Grok 认证方式选择对话框
+ * @param {string} providerType - 提供商类型
+ */
+function showGrokAuthMethodSelector(providerType) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.display = 'flex';
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-key"></i> <span data-i18n="oauth.gemini.selectMethod">${t('oauth.gemini.selectMethod')}</span></h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="auth-method-options" style="display: flex; flex-direction: column; gap: 12px;">
+                    <button class="auth-method-btn" data-method="batch-import" style="display: flex; align-items: center; gap: 12px; padding: 16px; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-file-import" style="font-size: 24px; color: #10b981;"></i>
+                        <div style="text-align: left;">
+                            <div style="font-weight: 600; color: #333;" data-i18n="oauth.grok.batchImport">${t('oauth.grok.batchImport')}</div>
+                            <div style="font-size: 12px; color: #666;" data-i18n="oauth.grok.batchImportDesc">${t('oauth.grok.batchImportDesc')}</div>
+                        </div>
+                    </button>
+                    <div style="padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 13px; color: #92400e;">
+                        <i class="fas fa-info-circle"></i> Grok 目前仅支持通过 SSO Token 手动添加或批量导入。
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-cancel" data-i18n="modal.provider.cancel">${t('modal.provider.cancel')}</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // 关闭按钮事件
+    const closeBtn = modal.querySelector('.modal-close');
+    const cancelBtn = modal.querySelector('.modal-cancel');
+    [closeBtn, cancelBtn].forEach(btn => {
+        btn.addEventListener('click', () => {
+            modal.remove();
+        });
     });
+    
+    // 认证方式选择按钮事件
+    const methodBtns = modal.querySelectorAll('.auth-method-btn');
+    methodBtns.forEach(btn => {
+        btn.addEventListener('mouseenter', () => {
+            btn.style.borderColor = '#10b981';
+            btn.style.background = '#f0fdf4';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.borderColor = '#e0e0e0';
+            btn.style.background = 'white';
+        });
+        btn.addEventListener('click', async () => {
+            const method = btn.dataset.method;
+            modal.remove();
+            
+            if (method === 'batch-import') {
+                showGrokBatchImportModal(providerType);
+            }
+        });
+    });
+}
+
+/**
+ * 显示 Grok 批量导入模态框
+ * @param {string} providerType - 提供商类型
+ */
+function showGrokBatchImportModal(providerType) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.display = 'flex';
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-import"></i> <span data-i18n="oauth.grok.batchImport">${t('oauth.grok.batchImport')}</span></h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="batch-import-instructions" style="margin-bottom: 16px; padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                    <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                        <i class="fas fa-info-circle"></i>
+                        <span data-i18n="oauth.grok.importInstructions">${t('oauth.grok.importInstructions')}</span>
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="batchGrokTokens" style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">
+                        <span data-i18n="oauth.grok.tokensLabel">${t('oauth.grok.tokensLabel')}</span>
+                    </label>
+                    <textarea 
+                        id="batchGrokTokens" 
+                        rows="10" 
+                        style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-family: monospace; font-size: 13px; resize: vertical;"
+                        placeholder='${t('oauth.grok.tokensPlaceholder')}'
+                        data-i18n-placeholder="oauth.grok.tokensPlaceholder"
+                    ></textarea>
+                </div>
+                <div class="form-group" style="margin-top: 12px; margin-bottom: 16px;">
+                    <details style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        <summary style="padding: 12px; cursor: pointer; font-weight: 600; color: #374151; user-select: none;">
+                            <i class="fas fa-code" style="color: #10b981; margin-right: 8px;"></i>
+                            <span data-i18n="oauth.grok.jsonExample">${t('oauth.grok.jsonExample')}</span>
+                        </summary>
+                        <div style="padding: 12px; background: #1f2937; border-radius: 0 0 8px 8px;">
+                            <div style="color: #10b981; font-family: monospace; font-size: 12px;">
+                                <div style="color: #9ca3af; margin-bottom: 8px;">// 格式 1：纯文本（每行一个 SSO）</div>
+                                <pre style="margin: 0; white-space: pre; overflow-x: auto; color: #34d399;">sso_token_1_abc...
+sso_token_2_def...</pre>
+                            </div>
+                            <div style="color: #10b981; font-family: monospace; font-size: 12px; margin-top: 16px;">
+                                <div style="color: #9ca3af; margin-bottom: 8px;">// 格式 2：JSON 数组</div>
+                                <pre style="margin: 0; white-space: pre; overflow-x: auto; color: #34d399;">[
+  "sso_token_1...",
+  "sso_token_2..."
+]</pre>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <div class="batch-import-stats" id="grokBatchStats" style="display: none; margin-top: 12px; padding: 12px; background: #f3f4f6; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span data-i18n="oauth.grok.tokenCount">${t('oauth.grok.tokenCount')}</span>
+                        <span id="grokTokenCountValue" style="font-weight: 600;">0</span>
+                    </div>
+                </div>
+                <div class="batch-import-progress" id="grokBatchProgress" style="display: none; margin-top: 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <i class="fas fa-spinner fa-spin" style="color: #10b981;"></i>
+                        <span data-i18n="oauth.grok.importing">${t('oauth.grok.importing')}</span>
+                    </div>
+                    <div class="progress-bar" style="margin-top: 8px; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden;">
+                        <div id="grokImportProgressBar" style="height: 100%; width: 0%; background: #10b981; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+                <div class="batch-import-result" id="grokBatchResult" style="display: none; margin-top: 16px; padding: 12px; border-radius: 8px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-cancel" data-i18n="modal.provider.cancel">${t('modal.provider.cancel')}</button>
+                <button class="btn btn-primary batch-import-submit" id="grokBatchSubmit">
+                    <i class="fas fa-upload"></i>
+                    <span data-i18n="oauth.grok.startImport">${t('oauth.grok.startImport')}</span>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const textarea = modal.querySelector('#batchGrokTokens');
+    const statsDiv = modal.querySelector('#grokBatchStats');
+    const tokenCountValue = modal.querySelector('#grokTokenCountValue');
+    const progressDiv = modal.querySelector('#grokBatchProgress');
+    const progressBar = modal.querySelector('#grokImportProgressBar');
+    const resultDiv = modal.querySelector('#grokBatchResult');
+    const submitBtn = modal.querySelector('#grokBatchSubmit');
+    const closeBtn = modal.querySelector('.modal-close');
+    const cancelBtn = modal.querySelector('.modal-cancel');
+    
+    // 自动检测输入
+    textarea.addEventListener('input', () => {
+        const content = textarea.value.trim();
+        if (!content) {
+            statsDiv.style.display = 'none';
+            return;
+        }
+        
+        let tokens = [];
+        try {
+            // 尝试解析为 JSON
+            const parsed = JSON.parse(content);
+            tokens = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+            // 解析失败，按行分割
+            tokens = content.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+        }
+        
+        tokenCountValue.textContent = tokens.length;
+        statsDiv.style.display = 'block';
+    });
+    
+    // 关闭
+    [closeBtn, cancelBtn].forEach(btn => {
+        btn.addEventListener('click', () => modal.remove());
+    });
+    
+    // 提交
+    submitBtn.onclick = async () => {
+        const content = textarea.value.trim();
+        if (!content) {
+            showToast(t('common.error'), t('oauth.grok.noTokens'), 'error');
+            return;
+        }
+        
+        let tokens = [];
+        try {
+            const parsed = JSON.parse(content);
+            tokens = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+            tokens = content.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+        }
+        
+        if (tokens.length === 0) {
+            showToast(t('common.warning'), t('oauth.grok.noTokens'), 'warning');
+            return;
+        }
+        
+        // 开始导入
+        textarea.disabled = true;
+        submitBtn.disabled = true;
+        cancelBtn.disabled = true;
+        progressDiv.style.display = 'block';
+        resultDiv.style.display = 'none';
+        progressBar.style.width = '0%';
+        
+        // 创建实时结果显示区域
+        resultDiv.style.cssText = 'display: block; margin-top: 16px; padding: 12px; border-radius: 8px; background: #f3f4f6; border: 1px solid #d1d5db;';
+        resultDiv.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <i class="fas fa-spinner fa-spin" style="color: #10b981;"></i>
+                <strong id="grokBatchProgressText">${t('oauth.grok.importingProgress', { current: 0, total: tokens.length })}</strong>
+            </div>
+            <div id="grokBatchResultsList" style="max-height: 200px; overflow-y: auto; font-size: 12px; margin-top: 8px;"></div>
+        `;
+        
+        const progressText = resultDiv.querySelector('#grokBatchProgressText');
+        const resultsList = resultDiv.querySelector('#grokBatchResultsList');
+        
+        let importSuccess = false;
+
+        try {
+            const response = await fetch('/api/grok/batch-import-tokens', {
+                method: 'POST',
+                headers: window.apiClient ? window.apiClient.getAuthHeaders() : {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ tokens })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                
+                let eventType = '';
+                let eventData = '';
+                
+                for (const line of lines) {
+                    if (line.startsWith('event: ')) {
+                        eventType = line.substring(7).trim();
+                    } else if (line.startsWith('data: ')) {
+                        eventData = line.substring(6).trim();
+                        
+                        if (eventType && eventData) {
+                            try {
+                                const data = JSON.parse(eventData);
+                                
+                                if (eventType === 'progress') {
+                                    const { index, total, current } = data;
+                                    const percentage = Math.round((index / total) * 100);
+                                    progressBar.style.width = `${percentage}%`;
+                                    progressText.textContent = t('oauth.grok.importingProgress', { current: index, total: total });
+                                    
+                                    const resultItem = document.createElement('div');
+                                    resultItem.style.cssText = 'padding: 4px 0; border-bottom: 1px solid rgba(0,0,0,0.1);';
+                                    if (current.success) {
+                                        resultItem.innerHTML = `Token ${current.index}: <span style="color: #166534;">✓ ${current.path}</span>`;
+                                        importSuccess = true;
+                                    } else if (current.error === 'duplicate') {
+                                        resultItem.innerHTML = `Token ${current.index}: <span style="color: #d97706;">⚠ ${t('oauth.grok.duplicateToken')}</span>
+                                            ${current.existingPath ? `<span style="color: #666; font-size: 11px;">(${current.existingPath})</span>` : ''}`;
+                                    } else {
+                                        resultItem.innerHTML = `Token ${current.index}: <span style="color: #991b1b;">✗ ${current.error}</span>`;
+                                    }
+                                    resultsList.appendChild(resultItem);
+                                    resultsList.scrollTop = resultsList.scrollHeight;
+                                } else if (eventType === 'complete') {
+                                    progressBar.style.width = '100%';
+                                    progressDiv.style.display = 'none';
+                                    
+                                    const isAllSuccess = data.failedCount === 0;
+                                    const isAllFailed = data.successCount === 0;
+                                    let resultClass, resultIcon, resultMessage;
+                                    
+                                    if (isAllSuccess) {
+                                        resultClass = 'background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;';
+                                        resultIcon = 'fa-check-circle';
+                                        resultMessage = t('oauth.grok.importSuccess', { count: data.successCount });
+                                    } else if (isAllFailed) {
+                                        resultClass = 'background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;';
+                                        resultIcon = 'fa-times-circle';
+                                        resultMessage = t('oauth.grok.importAllFailed', { count: data.failedCount });
+                                    } else {
+                                        resultClass = 'background: #fffbeb; border: 1px solid #fde68a; color: #92400e;';
+                                        resultIcon = 'fa-exclamation-triangle';
+                                        resultMessage = t('oauth.grok.importPartial', { success: data.successCount, failed: data.failedCount });
+                                    }
+                                    
+                                    // 移除加载图标并更新文案
+                                    const headerWrapper = resultDiv.querySelector('div:first-child');
+                                    headerWrapper.innerHTML = `<i class="fas ${resultIcon}" style="color: ${isAllFailed ? '#991b1b' : '#166534'};"></i> <strong>${resultMessage}</strong>`;
+                                    
+                                    // 刷新页面数据
+                                    if (importSuccess) {
+                                        setTimeout(() => {
+                                            if (window.loadProviders) window.loadProviders();
+                                            if (window.refreshProviderConfig) window.refreshProviderConfig(providerType);
+                                        }, 1000);
+                                    }
+                                    
+                                    // 恢复按钮
+                                    submitBtn.innerHTML = `<i class="fas fa-check"></i> <span>${t('common.confirm')}</span>`;
+                                    submitBtn.disabled = false;
+                                    submitBtn.onclick = () => modal.remove();
+                                    cancelBtn.style.display = 'none';
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Grok Batch Import Error:', error);
+            progressText.innerHTML = `<span style="color: #991b1b;">${t('oauth.grok.importError')}: ${error.message}</span>`;
+            submitBtn.disabled = false;
+            cancelBtn.disabled = false;
+        }
+    };
 }
 
 /**
@@ -1306,7 +1901,7 @@ function showGeminiBatchImportModal(providerType) {
     });
     
     // 提交按钮事件
-    submitBtn.addEventListener('click', async () => {
+    submitBtn.onclick = async () => {
         let tokens = [];
         try {
             const val = textarea.value.trim();
@@ -1423,9 +2018,9 @@ function showGeminiBatchImportModal(providerType) {
                                         resultMessage = t('oauth.gemini.importPartial', { success: data.successCount, failed: data.failedCount });
                                     }
                                     
-                                    resultDiv.style.cssText = `display: block; margin-top: 16px; padding: 12px; border-radius: 8px; ${resultClass}`;
-                                    const headerDiv = resultDiv.querySelector('div:first-child');
-                                    headerDiv.innerHTML = `<i class="fas ${resultIcon}"></i> <strong>${resultMessage}</strong>`;
+                                    // 移除加载图标并更新文案
+                                    const headerWrapper = resultDiv.querySelector('div:first-child');
+                                    headerWrapper.innerHTML = `<i class="fas ${resultIcon}" style="color: ${isAllFailed ? '#991b1b' : '#166534'};"></i> <strong>${resultMessage}</strong>`;
                                     
                                     if (data.successCount > 0) {
                                         importSuccess = true;
@@ -1462,10 +2057,13 @@ function showGeminiBatchImportModal(providerType) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = `<i class="fas fa-upload"></i> <span data-i18n="oauth.gemini.startImport">${t('oauth.gemini.startImport')}</span>`;
             } else {
-                submitBtn.innerHTML = `<i class="fas fa-check-circle"></i> <span>${t('common.success')}</span>`;
+                submitBtn.innerHTML = `<i class="fas fa-check"></i> <span>${t('common.confirm')}</span>`;
+                submitBtn.disabled = false;
+                submitBtn.onclick = () => modal.remove();
+                cancelBtn.style.display = 'none';
             }
         }
-    });
+    };
 }
 
 /**
@@ -1559,7 +2157,7 @@ function showKiroBatchImportModal() {
     });
     
     // 提交按钮事件 - 使用 SSE 流式响应实时显示进度
-    submitBtn.addEventListener('click', async () => {
+    submitBtn.onclick = async () => {
         const tokens = textarea.value.split('\n').filter(line => line.trim());
         
         if (tokens.length === 0) {
@@ -1737,10 +2335,13 @@ function showKiroBatchImportModal() {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = `<i class="fas fa-upload"></i> <span data-i18n="oauth.kiro.startImport">${t('oauth.kiro.startImport')}</span>`;
             } else {
-                submitBtn.innerHTML = `<i class="fas fa-check-circle"></i> <span>${t('common.success')}</span>`;
+                submitBtn.innerHTML = `<i class="fas fa-check"></i> <span>${t('common.confirm')}</span>`;
+                submitBtn.disabled = false;
+                submitBtn.onclick = () => modal.remove();
+                cancelBtn.style.display = 'none';
             }
         }
-    });
+    };
 }
 
 /**
@@ -3415,6 +4016,7 @@ export {
     loadSystemInfo,
     updateTimeDisplay,
     loadProviders,
+    loadProvidersPageData,
     openProviderManager,
     showAuthModal,
     executeGenerateAuthUrl,

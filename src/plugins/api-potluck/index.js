@@ -47,6 +47,14 @@ function normalizeUsageCandidate(candidate) {
     if (!candidate || typeof candidate !== 'object') {
         return null;
     }
+    if (Array.isArray(candidate)) {
+        return candidate.reduce((usage, item) => mergeUsage(usage, normalizeUsageCandidate(item)), {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            cachedTokens: 0
+        });
+    }
 
     const usage = candidate.usage || candidate.message?.usage || candidate.usageMetadata || candidate.response?.usage || null;
     const reasoningTokens = toNumber(
@@ -79,6 +87,10 @@ function normalizeUsageCandidate(candidate) {
     const cachedTokens = toNumber(
         candidate.cached_tokens ??
         usage?.cached_tokens ??
+        candidate.prompt_tokens_details?.cached_tokens ??
+        candidate.input_tokens_details?.cached_tokens ??
+        usage?.prompt_tokens_details?.cached_tokens ??
+        usage?.input_tokens_details?.cached_tokens ??
         usage?.cache_read_input_tokens ??
         usage?.cachedContentTokenCount
     );
@@ -112,8 +124,7 @@ function extractUsage(...candidates) {
 
 function getTrackedRequestIds(hookContext = {}) {
     return [...new Set([
-        hookContext._monitorRequestId,
-        hookContext._pluginRequestId
+        hookContext._monitorRequestId
     ].filter(Boolean))];
 }
 
@@ -267,13 +278,15 @@ const apiPotluckPlugin = {
                 try {
                     const usage = getPendingUsageForHookContext(hookContext);
 
-                    // 传入提供商和模型信息
+                    // 传入提供商和模型信息，以及请求 ID 用于防重
                     await incrementUsage(
                         hookContext.potluckApiKey, 
                         hookContext.toProvider, 
                         hookContext.model,
-                        usage
+                        usage,
+                        trackedRequestIds[0] || null
                     );
+
                 } catch (e) {
                     // 静默失败，不影响主流程
                     logger.error('[API Potluck Plugin] Failed to record usage:', e.message);

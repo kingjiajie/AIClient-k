@@ -15,7 +15,7 @@ export const PROVIDER_MAPPINGS = [
     {
         // Kiro OAuth 配置
         dirName: 'kiro',
-        patterns: ['configs/kiro/', '/kiro/'],
+        patterns: ['configs/kiro/', '/kiro/', 'kiro-auth-token'],
         providerType: 'claude-kiro-oauth',
         credPathKey: 'KIRO_OAUTH_CREDS_FILE_PATH',
         defaultCheckModel: 'claude-haiku-4-5',
@@ -26,7 +26,7 @@ export const PROVIDER_MAPPINGS = [
     {
         // Gemini CLI OAuth 配置
         dirName: 'gemini',
-        patterns: ['configs/gemini/', '/gemini/', 'configs/gemini-cli/'],
+        patterns: ['configs/gemini/', '/gemini/', '/.gemini/', 'configs/gemini-cli/'],
         providerType: 'gemini-cli-oauth',
         credPathKey: 'GEMINI_OAUTH_CREDS_FILE_PATH',
         defaultCheckModel: 'gemini-2.5-flash',
@@ -49,7 +49,7 @@ export const PROVIDER_MAPPINGS = [
     {
         // Antigravity OAuth 配置
         dirName: 'antigravity',
-        patterns: ['configs/antigravity/', '/antigravity/'],
+        patterns: ['configs/antigravity/', '/antigravity/', '/.antigravity/'],
         providerType: 'gemini-antigravity',
         credPathKey: 'ANTIGRAVITY_OAUTH_CREDS_FILE_PATH',
         defaultCheckModel: 'gemini-2.5-computer-use-preview-10-2025',
@@ -71,7 +71,7 @@ export const PROVIDER_MAPPINGS = [
     {
         // Codex OAuth 配置
         dirName: 'codex',
-        patterns: ['configs/codex/', '/codex/'],
+        patterns: ['configs/codex/', '/codex/', '/.codex/'],
         providerType: 'openai-codex-oauth',
         credPathKey: 'CODEX_OAUTH_CREDS_FILE_PATH',
         defaultCheckModel: 'gpt-5.2-codex',
@@ -80,13 +80,13 @@ export const PROVIDER_MAPPINGS = [
         urlKeys: ['CODEX_BASE_URL']
     },
     {
-        // Grok Reverse 配置
+        // Grok Web 配置
         dirName: 'grok',
         patterns: ['configs/grok/', '/grok/'],
-        providerType: 'grok-custom',
+        providerType: 'grok-web',
         credPathKey: 'GROK_COOKIE_TOKEN',
-        defaultCheckModel: 'grok-3',
-        displayName: 'Grok Reverse',
+        defaultCheckModel: 'grok-4.1-mini',
+        displayName: 'Grok Web',
         needsProjectId: false,
         urlKeys: ['GROK_BASE_URL', 'GROK_CF_CLEARANCE', 'GROK_USER_AGENT']
     }
@@ -269,7 +269,8 @@ export function detectProviderFromPath(normalizedPath) {
                     credPathKey: mapping.credPathKey,
                     defaultCheckModel: mapping.defaultCheckModel,
                     displayName: mapping.displayName,
-                    needsProjectId: mapping.needsProjectId
+                    needsProjectId: mapping.needsProjectId,
+                    urlKeys: mapping.urlKeys
                 };
             }
         }

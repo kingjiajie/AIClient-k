@@ -155,7 +155,7 @@ export function extractAndProcessSystemMessages(messages, replacements = []) {
     const nonSystemMessages = [];
 
     for (const message of messages) {
-        if (message.role === 'system') {
+        if (message.role === 'system' || message.role === 'developer') {
             let content = extractTextFromMessageContent(message.content);
             
             // 应用系统提示词内容替换

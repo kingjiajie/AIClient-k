@@ -11,6 +11,8 @@ const PROVIDERS_PER_PAGE = 5;
 let currentPage = 1;
 let currentProviders = [];
 let currentProviderType = '';
+let nodeSearchTerm = '';
+let currentViewMode = localStorage.getItem('providerViewMode') || 'list';
 
 function usesManagedModelList(providerType = '') {
     return Array.from(MANAGED_MODEL_LIST_PROVIDERS).some(baseType =>
@@ -341,7 +343,7 @@ async function openSupportedModelsPicker(providerType, uuid, event) {
         return;
     }
 
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     if (!providerDetail) {
         return;
     }
@@ -381,14 +383,16 @@ async function openSupportedModelsPicker(providerType, uuid, event) {
 /**
  * 显示提供商管理模态框
  * @param {Object} data - 提供商数据
+ * @param {string} initialSearchTerm - 初始搜索词
  */
-function showProviderManagerModal(data) {
+function showProviderManagerModal(data, initialSearchTerm = '') {
     const { providerType, providers, totalCount, healthyCount } = data;
     
     // 保存当前数据用于分页
     currentProviders = providers;
     currentProviderType = providerType;
     currentPage = 1;
+    nodeSearchTerm = initialSearchTerm;
     cachedModels = [];
     
     // 移除已存在的模态框
@@ -443,14 +447,28 @@ function showProviderManagerModal(data) {
                         </button>
                     </div>
                 </div>
-                
-                ${totalPages > 1 ? renderPagination(1, totalPages, providers.length) : ''}
-                
-                <div class="provider-list" id="providerList">
-                    ${renderProviderListPaginated(providers, 1)}
+
+                <div class="provider-nodes-toolbar" style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                    <div class="search-input-wrapper" style="position: relative; flex: 1;">
+                        <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary);"></i>
+                        <input type="text" id="nodeSearchInput" 
+                               value="${escapeHtml(nodeSearchTerm)}"
+                               placeholder="${t('modal.provider.searchNodesPlaceholder') || '搜索节点名称、UUID 或配置内容...'}" 
+                               style="width: 100%; padding: 10px 12px 10px 35px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+                    </div>
+                    <div class="view-mode-toggle" style="display: flex; background: var(--bg-secondary); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <button class="view-mode-btn ${currentViewMode === 'list' ? 'active' : ''}" data-mode="list" title="${t('common.view.list') || '列表视图'}" style="border: none; background: ${currentViewMode === 'list' ? 'var(--primary-color)' : 'transparent'}; color: ${currentViewMode === 'list' ? '#fff' : 'var(--text-secondary)'}; padding: 6px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-list"></i>
+                        </button>
+                        <button class="view-mode-btn ${currentViewMode === 'card' ? 'active' : ''}" data-mode="card" title="${t('common.view.card') || '卡片视图'}" style="border: none; background: ${currentViewMode === 'card' ? 'var(--primary-color)' : 'transparent'}; color: ${currentViewMode === 'card' ? '#fff' : 'var(--text-secondary)'}; padding: 6px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                            <i class="fas fa-th-large"></i>
+                        </button>
+                    </div>
                 </div>
                 
-                ${totalPages > 1 ? renderPagination(1, totalPages, providers.length, 'bottom') : ''}
+                <div id="paginationTop"></div>
+                <div class="provider-list" id="providerList"></div>
+                <div id="paginationBottom"></div>
             </div>
         </div>
     `;
@@ -461,9 +479,8 @@ function showProviderManagerModal(data) {
     // 添加模态框事件监听
     addModalEventListeners(modal);
     
-    // 先获取该提供商类型的模型列表（只调用一次API）
-    const pageProviders = providers.slice(0, PROVIDERS_PER_PAGE);
-    loadModelsForProviderType(providerType, pageProviders);
+    // 初始渲染
+    window.goToProviderPage(1);
 }
 
 /**
@@ -475,16 +492,19 @@ function showProviderManagerModal(data) {
  * @returns {string} HTML字符串
  */
 function renderPagination(page, totalPages, totalItems, position = 'top') {
+    if (totalPages <= 1 || currentViewMode === 'card') {
+        return `<div class="pagination-container" data-position="${position}"></div>`;
+    }
+    
     const startItem = (page - 1) * PROVIDERS_PER_PAGE + 1;
     const endItem = Math.min(page * PROVIDERS_PER_PAGE, totalItems);
     
-    // 生成页码按钮
     let pageButtons = '';
     const maxVisiblePages = 5;
     let startPage = Math.max(1, page - Math.floor(maxVisiblePages / 2));
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
     
-    if (endPage - startPage < maxVisiblePages - 1) {
+    if (endPage - startPage + 1 < maxVisiblePages) {
         startPage = Math.max(1, endPage - maxVisiblePages + 1);
     }
     
@@ -532,30 +552,68 @@ function renderPagination(page, totalPages, totalItems, position = 'top') {
 }
 
 /**
+ * 获取过滤后的提供商列表
+ */
+function getFilteredProviders() {
+    if (!nodeSearchTerm) return currentProviders;
+    const term = nodeSearchTerm.toLowerCase().trim();
+    return currentProviders.filter(p => {
+        // 搜索字段：自定义名称、UUID、API Key、Base URL、OAuth 路径等
+        const searchFields = [
+            p.customName,
+            p.uuid,
+            p.OPENAI_API_KEY,
+            p.OPENAI_BASE_URL,
+            p.CLAUDE_API_KEY,
+            p.CLAUDE_BASE_URL,
+            p.GEMINI_OAUTH_CREDS_FILE_PATH,
+            p.KIRO_OAUTH_CREDS_FILE_PATH,
+            p.QWEN_OAUTH_CREDS_FILE_PATH,
+            p.ANTIGRAVITY_OAUTH_CREDS_FILE_PATH,
+            p.IFLOW_OAUTH_CREDS_FILE_PATH,
+            p.CODEX_OAUTH_CREDS_FILE_PATH,
+            p.GROK_COOKIE_TOKEN,
+            p.FORWARD_API_KEY,
+            p.checkModelName
+        ];
+        
+        return searchFields.some(field => 
+            field && String(field).toLowerCase().includes(term)
+        );
+    });
+}
+
+/**
  * 跳转到指定页
  * @param {number} page - 目标页码
  */
 function goToProviderPage(page) {
-    const totalPages = Math.ceil(currentProviders.length / PROVIDERS_PER_PAGE);
+    const filteredProviders = getFilteredProviders();
+    const totalPages = Math.ceil(filteredProviders.length / PROVIDERS_PER_PAGE);
     
     // 验证页码范围
     if (page < 1) page = 1;
-    if (page > totalPages) page = totalPages;
+    if (page > totalPages && totalPages > 0) page = totalPages;
+    if (totalPages === 0) page = 1;
     
     currentPage = page;
     
     // 更新提供商列表
     const providerList = document.getElementById('providerList');
     if (providerList) {
-        providerList.innerHTML = renderProviderListPaginated(currentProviders, page);
+        providerList.innerHTML = renderProviderListPaginated(filteredProviders, page);
     }
     
     // 更新分页控件
-    const paginationContainers = document.querySelectorAll('.pagination-container');
-    paginationContainers.forEach(container => {
-        const position = container.getAttribute('data-position');
-        container.outerHTML = renderPagination(page, totalPages, currentProviders.length, position);
-    });
+    const paginationTop = document.getElementById('paginationTop');
+    const paginationBottom = document.getElementById('paginationBottom');
+    
+    if (paginationTop) {
+        paginationTop.innerHTML = totalPages > 1 ? renderPagination(page, totalPages, filteredProviders.length) : '';
+    }
+    if (paginationBottom) {
+        paginationBottom.innerHTML = totalPages > 1 ? renderPagination(page, totalPages, filteredProviders.length, 'bottom') : '';
+    }
     
     // 滚动到顶部
     const modalBody = document.querySelector('.provider-modal-body');
@@ -565,8 +623,8 @@ function goToProviderPage(page) {
     
     // 为当前页的提供商加载模型列表
     const startIndex = (page - 1) * PROVIDERS_PER_PAGE;
-    const endIndex = Math.min(startIndex + PROVIDERS_PER_PAGE, currentProviders.length);
-    const pageProviders = currentProviders.slice(startIndex, endIndex);
+    const endIndex = Math.min(startIndex + PROVIDERS_PER_PAGE, filteredProviders.length);
+    const pageProviders = filteredProviders.slice(startIndex, endIndex);
     
     // 如果已缓存模型列表，直接使用
     if (!usesManagedModelList(currentProviderType) && cachedModels.length > 0) {
@@ -585,6 +643,20 @@ function goToProviderPage(page) {
  * @returns {string} HTML字符串
  */
 function renderProviderListPaginated(providers, page) {
+    if (providers.length === 0) {
+        return `
+            <div class="no-providers">
+                <i class="fas fa-search" style="font-size: 2rem; opacity: 0.3; display: block; margin-bottom: 1rem;"></i>
+                <p>${t('common.noResults') || '没有找到匹配的节点'}</p>
+            </div>
+        `;
+    }
+
+    // 如果是卡片模式，显示所有节点，不分页
+    if (currentViewMode === 'card') {
+        return renderProviderList(providers);
+    }
+
     const startIndex = (page - 1) * PROVIDERS_PER_PAGE;
     const endIndex = Math.min(startIndex + PROVIDERS_PER_PAGE, providers.length);
     const pageProviders = providers.slice(startIndex, endIndex);
@@ -650,6 +722,18 @@ function addModalEventListeners(modal) {
     // 点击背景关闭模态框
     const handleBackgroundClick = (event) => {
         if (event.target === modal) {
+            // 检查是否有正在编辑的节点
+            const editingProvider = modal.querySelector('.provider-item-detail.editing, .provider-item-card.editing');
+            if (editingProvider) {
+                // showToast(t('common.warning'), '请先保存或取消编辑操作', 'warning');
+                return;
+            }
+            // 检查是否有正在新增的表单
+            const addForm = modal.querySelector('.add-provider-form');
+            if (addForm) {
+                // showToast(t('common.warning'), '请先保存或取消添加操作', 'warning');
+                return;
+            }
             modal.remove();
             document.removeEventListener('keydown', handleEscKey);
         }
@@ -684,6 +768,38 @@ function addModalEventListeners(modal) {
             }
         }
     };
+
+    // 节点搜索事件处理
+    const searchInput = modal.querySelector('#nodeSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            nodeSearchTerm = e.target.value;
+            window.goToProviderPage(1); // 搜索时重置回第一页
+        });
+    }
+
+    // 视图模式切换事件处理
+    const viewModeBtns = modal.querySelectorAll('.view-mode-btn');
+    viewModeBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode;
+            if (mode === currentViewMode) return;
+
+            currentViewMode = mode;
+            localStorage.setItem('providerViewMode', mode);
+
+            // 更新按钮状态
+            viewModeBtns.forEach(b => {
+                const isActive = b.dataset.mode === mode;
+                b.classList.toggle('active', isActive);
+                b.style.background = isActive ? 'var(--primary-color)' : 'transparent';
+                b.style.color = isActive ? '#fff' : 'var(--text-secondary)';
+            });
+
+            // 重新渲染当前页
+            window.goToProviderPage(currentPage);
+        });
+    });
     
     // 添加事件监听器
     document.addEventListener('keydown', handleEscKey);
@@ -721,11 +837,11 @@ function closeProviderModal(button) {
 }
 
 /**
- * 渲染提供商列表
+ * 渲染提供商列表（详细模式）
  * @param {Array} providers - 提供商数组
  * @returns {string} HTML字符串
  */
-function renderProviderList(providers) {
+function renderProviderDetailList(providers) {
     return providers.map(provider => {
         const isHealthy = provider.isHealthy;
         const isDisabled = provider.isDisabled || false;
@@ -815,6 +931,72 @@ function renderProviderList(providers) {
             </div>
         `;
     }).join('');
+}
+
+/**
+ * 渲染提供商列表（卡片模式）
+ * @param {Array} providers - 提供商数组
+ * @returns {string} HTML字符串
+ */
+function renderProviderCardList(providers) {
+    let html = '<div class="provider-cards-grid">';
+    html += providers.map(provider => {
+        const isHealthy = provider.isHealthy;
+        const isDisabled = provider.isDisabled || false;
+        const healthClass = isHealthy ? 'healthy' : 'unhealthy';
+        const disabledClass = isDisabled ? 'disabled' : '';
+        const displayName = provider.customName || provider.uuid;
+        const needsRefresh = !!provider.needsRefresh;
+        const toggleButtonText = isDisabled ? t('modal.provider.enabled') : t('modal.provider.disabled');
+        const toggleButtonIcon = isDisabled ? 'fas fa-play' : 'fas fa-ban';
+        const toggleButtonClass = isDisabled ? 'btn-success' : 'btn-warning';
+
+        return `
+            <div class="provider-item-card ${healthClass} ${disabledClass}" data-uuid="${provider.uuid}">
+                <div class="card-header">
+                    <div class="card-status-dot"></div>
+                    <div class="card-name" title="${displayName}">${displayName}</div>
+                    ${needsRefresh ? '<i class="fas fa-sync-alt fa-spin card-refresh-icon"></i>' : ''}
+                </div>
+                <div class="card-body">
+                    <div class="card-stat" title="${t('modal.provider.usageCount')}: ${provider.usageCount || 0}">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>${provider.usageCount || 0}</span>
+                    </div>
+                    <div class="card-stat" title="${t('modal.provider.errorCount')}: ${provider.errorCount || 0}">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span>${provider.errorCount || 0}</span>
+                    </div>
+                </div>
+                <div class="card-actions" onclick="event.stopPropagation()">
+                    <button class="card-action-btn ${toggleButtonClass}" onclick="window.toggleProviderStatus('${provider.uuid}', event)" title="${toggleButtonText}">
+                        <i class="${toggleButtonIcon}"></i>
+                    </button>
+                    <button class="card-action-btn btn-delete" onclick="window.deleteProvider('${provider.uuid}', event)" title="${t('modal.provider.delete')}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+                <div class="provider-item-content" id="content-${provider.uuid}">
+                    ${renderProviderConfig(provider)}
+                </div>
+            </div>
+        `;
+    }).join('');
+    html += '</div>';
+    return html;
+}
+
+/**
+ * 渲染提供商列表
+ * @param {Array} providers - 提供商数组
+ * @returns {string} HTML字符串
+ */
+function renderProviderList(providers) {
+    if (currentViewMode === 'card') {
+        return renderProviderCardList(providers);
+    } else {
+        return renderProviderDetailList(providers);
+    }
 }
 
 /**
@@ -1064,7 +1246,8 @@ function getFieldOrder(provider) {
     const excludedFields = [
         'isHealthy', 'lastUsed', 'usageCount', 'errorCount', 'lastErrorTime',
         'uuid', 'isDisabled', 'lastHealthCheckTime', 'lastHealthCheckModel', 'lastErrorMessage',
-        'notSupportedModels', 'supportedModels', 'refreshCount', 'needsRefresh', '_lastSelectionSeq'
+        'notSupportedModels', 'supportedModels', 'refreshCount', 'needsRefresh', '_lastSelectionSeq',
+        'lastRefreshTime', 'lastSuccessTime'
     ];
     
     // 尝试从当前模态框上下文中获取提供商类型
@@ -1089,7 +1272,7 @@ function getFieldOrder(provider) {
         } else if (provider.CODEX_OAUTH_CREDS_FILE_PATH) {
             providerType = 'openai-codex-oauth';
         } else if (provider.GROK_COOKIE_TOKEN) {
-            providerType = 'grok-custom';
+            providerType = 'grok-web';
         } else if (provider.FORWARD_API_KEY) {
             providerType = 'forward-api';
         }
@@ -1135,7 +1318,7 @@ function toggleProviderDetails(uuid) {
 function editProvider(uuid, event) {
     event.stopPropagation();
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const configInputs = providerDetail.querySelectorAll('input[data-config-key]');
     const configSelects = providerDetail.querySelectorAll('select[data-config-key]');
     const content = providerDetail.querySelector(`#content-${uuid}`);
@@ -1203,7 +1386,7 @@ function editProvider(uuid, event) {
 function cancelEdit(uuid, event) {
     event.stopPropagation();
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const configInputs = providerDetail.querySelectorAll('input[data-config-key]');
     const configSelects = providerDetail.querySelectorAll('select[data-config-key]');
     
@@ -1291,7 +1474,7 @@ function cancelEdit(uuid, event) {
 async function saveProvider(uuid, event) {
     event.stopPropagation();
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     
     const providerConfig = collectDraftProviderConfig(providerDetail, providerType, uuid);
@@ -1324,7 +1507,7 @@ async function deleteProvider(uuid, event) {
         return;
     }
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     
     try {
@@ -1428,34 +1611,6 @@ function showAddProviderForm(providerType) {
     
     if (existingForm) {
         existingForm.remove();
-        return;
-    }
-    
-    // Codex OAuth 只支持授权添加，不支持手动添加
-    if (providerType === 'openai-codex-oauth') {
-        const form = document.createElement('div');
-        form.className = 'add-provider-form';
-        form.innerHTML = `
-            <h4 data-i18n="modal.provider.addTitle"><i class="fas fa-plus"></i> 添加新提供商配置</h4>
-            <div class="oauth-only-notice" style="padding: 20px; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; margin: 15px 0;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                    <i class="fas fa-info-circle" style="color: #d97706; font-size: 24px;"></i>
-                    <strong style="color: #92400e;">Codex 仅支持 OAuth 授权添加</strong>
-                </div>
-                <p style="color: #b45309; margin: 0 0 15px 0;">
-                    OpenAI Codex 需要通过 OAuth 授权获取访问令牌，无法手动填写凭据。请点击下方按钮进行授权。
-                </p>
-                <button class="btn btn-primary" onclick="window.handleGenerateAuthUrl && window.handleGenerateAuthUrl('openai-codex-oauth'); this.closest('.add-provider-form').remove();">
-                    <i class="fas fa-key"></i> 开始 OAuth 授权
-                </button>
-                <button class="btn btn-secondary" style="margin-left: 10px;" onclick="this.closest('.add-provider-form').remove()">
-                    <i class="fas fa-times"></i> <span data-i18n="modal.provider.cancel">取消</span>
-                </button>
-            </div>
-        `;
-        
-        const providerList = modal.querySelector('.provider-list');
-        providerList.parentNode.insertBefore(form, providerList);
         return;
     }
     
@@ -1710,7 +1865,7 @@ async function addProvider(providerType) {
 async function toggleProviderStatus(uuid, event) {
     event.stopPropagation();
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     const currentProvider = providerDetail.closest('.provider-modal').querySelector(`[data-uuid="${uuid}"]`);
     
@@ -1757,8 +1912,11 @@ async function resetAllProvidersHealth(providerType) {
         if (response.success) {
             showToast(t('common.success'), t('modal.provider.resetHealth.success', { count: response.resetCount }), 'success');
             
-            // 重新加载配置
-            await window.apiClient.post('/reload-config');
+            // 只有当确实有节点的健康状态被重置时，才重新加载配置以刷新适配器实例
+            if (response.resetCount > 0) {
+                console.log(`[UI] ${response.resetCount} node(s) health status reset, reloading configuration...`);
+                await window.apiClient.post('/reload-config');
+            }
             
             // 刷新提供商配置显示
             await refreshProviderConfig(providerType);
@@ -1800,10 +1958,13 @@ async function performHealthCheck(providerType) {
             
             showToast(t('common.info'), message, failCount > 0 ? 'warning' : 'success');
             
-            // 重新加载配置
-            await window.apiClient.post('/reload-config');
+            // 只有当有节点从不健康恢复为健康时，才需要重新加载配置以刷新适配器实例
+            if (successCount > 0) {
+                console.log(`[UI] ${successCount} node(s) recovered, reloading configuration...`);
+                await window.apiClient.post('/reload-config');
+            }
             
-            // 刷新提供商配置显示
+            // 无论如何都要刷新显示
             await refreshProviderConfig(providerType);
         } else {
             showToast(t('common.error'), t('modal.provider.healthCheck') + ' ' + t('common.error'), 'error');
@@ -1823,7 +1984,7 @@ async function performSingleHealthCheck(uuid, event) {
     event.stopPropagation();
 
     const button = event.currentTarget || event.target.closest('button');
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const providerType = providerDetail?.closest('.provider-modal')?.getAttribute('data-provider-type');
 
     if (!providerDetail || !providerType) {
@@ -1840,6 +2001,8 @@ async function performSingleHealthCheck(uuid, event) {
         }
 
         showToast(t('common.info'), t('modal.provider.healthCheck') + '...', 'info');
+
+        const isCurrentlyHealthy = providerDetail.classList.contains('healthy');
 
         const response = await window.apiClient.post(
             `/providers/${encodeURIComponent(providerType)}/${uuid}/health-check`,
@@ -1863,7 +2026,12 @@ async function performSingleHealthCheck(uuid, event) {
             response.healthy ? 'success' : 'warning'
         );
 
-        await window.apiClient.post('/reload-config');
+        // 只有当健康状态确实发生变化时才重新加载配置
+        if (isCurrentlyHealthy !== response.healthy) {
+            console.log(`[UI] Provider ${uuid} health status changed (from ${isCurrentlyHealthy} to ${response.healthy}), reloading configuration...`);
+            await window.apiClient.post('/reload-config');
+        }
+        
         await refreshProviderConfig(providerType);
     } catch (error) {
         console.error('Single provider health check failed:', error);
@@ -1887,7 +2055,7 @@ async function refreshProviderUuid(uuid, event) {
         return;
     }
     
-    const providerDetail = event.target.closest('.provider-item-detail');
+    const providerDetail = event.target.closest('.provider-item-detail, .provider-item-card');
     const providerType = providerDetail.closest('.provider-modal').getAttribute('data-provider-type');
     
     try {

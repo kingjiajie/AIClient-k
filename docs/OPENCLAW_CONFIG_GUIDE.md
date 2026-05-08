@@ -1,12 +1,12 @@
 # OpenClaw Configuration Guide
 
-Quick configuration guide for using AIClient-2-API with OpenClaw.
+Quick configuration guide for using AIClient2API with OpenClaw.
 
 ---
 
 ## Prerequisites
 
-1. Start AIClient-2-API service
+1. Start AIClient2API service
 2. Configure at least one provider in Web UI (`http://localhost:3000`)
 3. Note the API Key from configuration file
 4. Install OpenClaw
@@ -195,7 +195,7 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "your question"
 ## FAQ
 
 **Q: Connection failed?**
-- Confirm AIClient-2-API service is running
+- Confirm AIClient2API service is running
 - Check if Base URL is correct (OpenAI protocol needs `/v1` suffix)
 - Try using `127.0.0.1` instead of `localhost`
 
@@ -204,10 +204,10 @@ openclaw chat --model aiclient2api/gemini-3-flash-preview "your question"
 - Confirm environment variable `AICLIENT2API_KEY` is set
 
 **Q: Model unavailable?**
-- Confirm provider is configured in AIClient-2-API Web UI
+- Confirm provider is configured in AIClient2API Web UI
 - Run `openclaw gateway restart` to restart gateway
 - Run `openclaw models list` to verify model list
 
 ---
 
-For more information, see [AIClient-2-API Documentation](../README.md)
+For more information, see [AIClient2API Documentation](../README.md)

@@ -1,6 +1,6 @@
 // 路径路由示例功能模块
 
-import { showToast } from './utils.js';
+import { showToast, copyToClipboard } from './utils.js';
 import { t } from './i18n.js';
 
 /**
@@ -67,20 +67,24 @@ function initCopyButtons() {
             if (!path) return;
             
             try {
-                await navigator.clipboard.writeText(path);
-                showToast(t('common.success'), `${t('common.success')}: ${path}`, 'success');
-                
-                // 临时更改按钮图标
-                const icon = button.querySelector('i');
-                if (icon) {
-                    const originalClass = icon.className;
-                    icon.className = 'fas fa-check';
-                    button.style.color = 'var(--success-color)';
+                const success = await copyToClipboard(path);
+                if (success) {
+                    showToast(t('common.success'), `${t('common.success')}: ${path}`, 'success');
                     
-                    setTimeout(() => {
-                        icon.className = originalClass;
-                        button.style.color = '';
-                    }, 2000);
+                    // 临时更改按钮图标
+                    const icon = button.querySelector('i');
+                    if (icon) {
+                        const originalClass = icon.className;
+                        icon.className = 'fas fa-check';
+                        button.style.color = 'var(--success-color)';
+                        
+                        setTimeout(() => {
+                            icon.className = originalClass;
+                            button.style.color = '';
+                        }, 2000);
+                    }
+                } else {
+                    throw new Error('Copy failed');
                 }
                 
             } catch (error) {
@@ -120,7 +124,7 @@ function getAvailableRoutes() {
     return [
         {
             provider: 'forward-api',
-            name: 'NewAPI',
+            name: t('dashboard.routing.nodeName.newapi'),
             paths: {
                 openai: '/forward-api/v1/chat/completions',
                 claude: '/forward-api/v1/messages'
@@ -131,7 +135,7 @@ function getAvailableRoutes() {
         },
         {
             provider: 'claude-custom',
-            name: 'Claude Custom',
+            name: t('dashboard.routing.nodeName.claude'),
             paths: {
                 openai: '/claude-custom/v1/chat/completions',
                 claude: '/claude-custom/v1/messages'
@@ -142,7 +146,7 @@ function getAvailableRoutes() {
         },
         {
             provider: 'claude-kiro-oauth',
-            name: 'Claude Kiro OAuth',
+            name: t('dashboard.routing.nodeName.kiro'),
             paths: {
                 openai: '/claude-kiro-oauth/v1/chat/completions',
                 claude: '/claude-kiro-oauth/v1/messages'
@@ -153,7 +157,7 @@ function getAvailableRoutes() {
         },
         {
             provider: 'openai-custom',
-            name: 'OpenAI Custom',
+            name: t('dashboard.routing.nodeName.openai'),
             paths: {
                 openai: '/openai-custom/v1/chat/completions',
                 claude: '/openai-custom/v1/messages'
@@ -164,7 +168,7 @@ function getAvailableRoutes() {
         },
         {
             provider: 'gemini-cli-oauth',
-            name: 'Gemini CLI OAuth',
+            name: t('dashboard.routing.nodeName.gemini'),
             paths: {
                 openai: '/gemini-cli-oauth/v1/chat/completions',
                 claude: '/gemini-cli-oauth/v1/messages'
@@ -175,29 +179,29 @@ function getAvailableRoutes() {
         },
         {
             provider: 'gemini-antigravity',
-            name: 'Gemini Antigravity',
+            name: t('dashboard.routing.nodeName.antigravity'),
             paths: {
                 openai: '/gemini-antigravity/v1/chat/completions',
                 claude: '/gemini-antigravity/v1/messages'
             },
-            description: t('dashboard.routing.experimental') || '实验性',
-            badge: t('dashboard.routing.experimental') || '实验性',
+            description: t('dashboard.routing.experimental'),
+            badge: t('dashboard.routing.experimental'),
             badgeClass: 'oauth'
         },
         {
             provider: 'openai-qwen-oauth',
-            name: 'Qwen OAuth',
+            name: t('dashboard.routing.nodeName.qwen'),
             paths: {
                 openai: '/openai-qwen-oauth/v1/chat/completions',
                 claude: '/openai-qwen-oauth/v1/messages'
             },
-            description: 'Qwen Code Plus',
+            description: t('dashboard.routing.description.qwen'),
             badge: t('dashboard.routing.oauth'),
             badgeClass: 'oauth'
         },
         {
             provider: 'openai-iflow',
-            name: 'iFlow OAuth',
+            name: t('dashboard.routing.nodeName.iflow'),
             paths: {
                 openai: '/openai-iflow/v1/chat/completions',
                 claude: '/openai-iflow/v1/messages'
@@ -208,7 +212,7 @@ function getAvailableRoutes() {
         },
         {
             provider: 'openai-codex-oauth',
-            name: 'OpenAI Codex OAuth',
+            name: t('dashboard.routing.nodeName.codex'),
             paths: {
                 openai: '/openai-codex-oauth/v1/chat/completions',
                 claude: '/openai-codex-oauth/v1/messages'
@@ -219,21 +223,21 @@ function getAvailableRoutes() {
         },
         {
             provider: 'openaiResponses-custom',
-            name: 'OpenAI Responses',
+            name: t('dashboard.routing.nodeName.responses'),
             paths: {
                 openai: '/openaiResponses-custom/v1/responses',
                 claude: '/openaiResponses-custom/v1/messages'
             },
-            description: '结构化对话API',
-            badge: 'Responses',
+            description: t('dashboard.routing.description.responses'),
+            badge: t('dashboard.routing.badge.responses'),
             badgeClass: 'responses'
         },
         {
-            provider: 'grok-custom',
-            name: 'Grok Reverse',
+            provider: 'grok-web',
+            name: t('dashboard.routing.nodeName.grok'),
             paths: {
-                openai: '/grok-custom/v1/chat/completions',
-                claude: '/grok-custom/v1/messages'
+                openai: '/grok-web/v1/chat/completions',
+                claude: '/grok-web/v1/messages'
             },
             description: t('dashboard.routing.free'),
             badge: t('dashboard.routing.free'),
@@ -269,8 +273,23 @@ function highlightProviderRoute(provider) {
  */
 async function copyCurlExample(provider, options = {}) {
     const routes = getAvailableRoutes();
-    const route = routes.find(r => r.provider === provider);
+    let route = routes.find(r => r.provider === provider);
     
+    // 如果没找到，尝试匹配前缀
+    if (!route) {
+        const baseRoute = routes.find(r => provider.startsWith(r.provider + '-'));
+        if (baseRoute) {
+            route = {
+                ...baseRoute,
+                provider: provider,
+                paths: {
+                    openai: `/${provider}/v1/chat/completions`,
+                    claude: `/${provider}/v1/messages`
+                }
+            };
+        }
+    }
+
     if (!route) {
         showToast(t('common.error'), t('common.error'), 'error');
         return;
@@ -284,14 +303,21 @@ async function copyCurlExample(provider, options = {}) {
         return;
     }
     
+    const hostname = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 
+                     `http://${window.location.host}` : 
+                     `${window.location.protocol}//${window.location.host}`;
+                     
     let curlCommand = '';
     
+    // 获取基础提供商ID（去掉后缀）
+    const baseProviderId = routes.find(r => provider.startsWith(r.provider))?.provider || provider;
+    
     // 根据不同提供商和协议生成对应的curl命令
-    switch (provider) {
+    switch (baseProviderId) {
         case 'claude-custom':
         case 'claude-kiro-oauth':
             if (protocol === 'openai') {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{
@@ -300,7 +326,7 @@ async function copyCurlExample(provider, options = {}) {
     "max_tokens": 1000
   }'`;
             } else {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${model}",
@@ -312,8 +338,11 @@ async function copyCurlExample(provider, options = {}) {
             
         case 'openai-custom':
         case 'openai-qwen-oauth':
+        case 'openai-iflow':
+        case 'openai-codex-oauth':
+        case 'forward-api':
             if (protocol === 'openai') {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{
@@ -322,7 +351,7 @@ async function copyCurlExample(provider, options = {}) {
     "max_tokens": 1000
   }'`;
             } else {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -d '{
@@ -334,19 +363,20 @@ async function copyCurlExample(provider, options = {}) {
             break;
             
         case 'gemini-cli-oauth':
+        case 'gemini-antigravity':
             if (protocol === 'openai') {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "gemini-3.1-pro-preview",
+    "model": "${model}",
     "messages": [{"role": "user", "content": "${message}"}],
     "max_tokens": 1000
   }'`;
             } else {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "gemini-3.1-pro-preview",
+    "model": "${model}",
     "max_tokens": 1000,
     "messages": [{"role": "user", "content": "${message}"}]
   }'`;
@@ -355,7 +385,7 @@ async function copyCurlExample(provider, options = {}) {
             
         case 'openaiResponses-custom':
             if (protocol === 'openai') {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{
@@ -364,7 +394,7 @@ async function copyCurlExample(provider, options = {}) {
     "max_output_tokens": 1000
   }'`;
             } else {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -d '{
@@ -374,32 +404,50 @@ async function copyCurlExample(provider, options = {}) {
   }'`;
             }
             break;
-        case 'grok-custom':
+        case 'grok-web':
             if (protocol === 'openai') {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{
-    "model": "grok-3",
+    "model": "${model}",
     "messages": [{"role": "user", "content": "${message}"}],
     "stream": true
   }'`;
             } else {
-                curlCommand = `curl http://localhost:3000${path} \\
+                curlCommand = `curl ${hostname}${path} \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -d '{
-    "model": "grok-3",
+    "model": "${model}",
     "max_tokens": 1000,
     "messages": [{"role": "user", "content": "${message}"}]
   }'`;
             }
             break;
+        default:
+            // 通用默认模板
+            curlCommand = `curl ${hostname}${path} \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -d '{
+    "model": "${model}",
+    "messages": [{"role": "user", "content": "${message}"}]
+  }'`;
     }
     
+    if (!curlCommand) {
+        showToast(t('common.error'), t('common.error'), 'error');
+        return;
+    }
+
     try {
-        await navigator.clipboard.writeText(curlCommand);
-        showToast(t('common.success'), t('oauth.success.msg'), 'success');
+        const success = await copyToClipboard(curlCommand);
+        if (success) {
+            showToast(t('common.success'), t('common.copy.success'), 'success');
+        } else {
+            throw new Error('Copy failed');
+        }
     } catch (error) {
         console.error('Failed to copy curl command:', error);
         showToast(t('common.error'), t('common.error'), 'error');
@@ -431,7 +479,7 @@ function renderRoutingExamples(providerConfigs) {
         'openaiResponses-custom': 'fa-comment-alt',
         'openai-iflow': 'fa-wind',
         'openai-codex-oauth': 'fa-keyboard',
-        'grok-custom': 'fa-search'
+        'grok-web': 'fa-search'
     };
 
     // 默认模型映射 (用于 curl 示例)
@@ -444,7 +492,7 @@ function renderRoutingExamples(providerConfigs) {
         'openai-qwen-oauth': 'qwen3-coder-plus',
         'openai-iflow': 'qwen3-max',
         'openai-codex-oauth': 'gpt-5',
-        'grok-custom': 'grok-3',
+        'grok-web': 'grok-4.1-mini',
         'openaiResponses-custom': 'gpt-4o'
     };
 

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import { atomicWriteFile, withFileLock } from '../utils/file-lock.js';
 import logger from '../utils/logger.js';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -10,7 +11,7 @@ import { getRequestBody } from '../utils/common.js';
 import { gitPersistence } from '../core/git-persistence.js';
 
 const execAsync = promisify(exec);
-const GITHUB_REPO = 'justlovemaki/AIClient-2-API';
+const GITHUB_REPO = 'justlovemaki/AIClient2API';
 
 function buildGitHubApiCandidates(repo) {
     const apiPath = `repos/${repo}/tags`;
@@ -384,7 +385,9 @@ export async function performUpdate(targetTag = null) {
     const versionFilePath = path.join(process.cwd(), 'VERSION');
     try {
         const newVersion = finalTag.replace(/^v/, '');
-        writeFileSync(versionFilePath, newVersion, 'utf-8');
+        await withFileLock(versionFilePath, async () => {
+            await atomicWriteFile(versionFilePath, newVersion, 'utf-8');
+        });
         gitPersistence.save(`App updated to version ${newVersion}`).catch(err => logger.error('[GitPersistence] Update sync failed:', err));
         logger.info(`[Update] VERSION file updated to ${newVersion}`);
     } catch (error) {

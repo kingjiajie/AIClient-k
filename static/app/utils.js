@@ -55,7 +55,7 @@ function getBaseProviderConfigs() {
             defaultPath: 'configs/iflow/'
         },
         { 
-            id: 'grok-custom', 
+            id: 'grok-web', 
             name: t('dashboard.routing.nodeName.grok'), 
             icon: 'fa-user-secret'
         },
@@ -201,6 +201,7 @@ function getFieldLabel(key) {
         'CODEX_OAUTH_CREDS_FILE_PATH': t('modal.provider.field.oauthPath'),
         'GROK_COOKIE_TOKEN': t('modal.provider.field.ssoToken'),
         'GROK_CF_CLEARANCE': t('modal.provider.field.cfClearance'),
+
         'GROK_USER_AGENT': t('modal.provider.field.userAgent'),
         'GEMINI_BASE_URL': 'Gemini Base URL',
         'KIRO_BASE_URL': t('modal.provider.field.baseUrl'),
@@ -399,7 +400,7 @@ function getProviderTypeFields(providerType) {
                 placeholder: 'https://api.openai.com/v1/codex'
             }
         ],
-        'grok-custom': [
+        'grok-web': [
             {
                 id: 'GROK_COOKIE_TOKEN',
                 label: t('modal.provider.field.ssoToken'),
@@ -498,6 +499,81 @@ async function apiRequest(url, options = {}) {
     return apiClient.request(endpoint, options);
 }
 
+/**
+ * 复制文本到剪贴板（带兼容性回退）
+ * @param {string} text - 要复制的文本
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (err) {
+            console.warn('navigator.clipboard failed, trying fallback:', err);
+        }
+    }
+
+    // Fallback: 使用 textarea 模拟复制
+    try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        return successful;
+    } catch (err) {
+        console.error('Fallback copy failed:', err);
+        return false;
+    }
+}
+
+/**
+ * 只为元素绑定一次事件
+ * @param {HTMLElement|null} element - 需要绑定事件的元素
+ * @param {string} eventName - 事件名称
+ * @param {Function} handler - 事件处理函数
+ * @param {string} key - 绑定标识，避免同一元素重复绑定同一类事件
+ * @returns {boolean} 是否完成了本次绑定
+ */
+function bindOnce(element, eventName, handler, key = eventName) {
+    if (!element) {
+        return false;
+    }
+
+    if (!markOnce(element, key)) {
+        return false;
+    }
+
+    element.addEventListener(eventName, handler);
+    return true;
+}
+
+/**
+ * 为元素记录一次性初始化状态
+ * @param {HTMLElement|null} element - 需要标记的元素
+ * @param {string} key - 标识名称
+ * @returns {boolean} 是否是首次标记
+ */
+function markOnce(element, key) {
+    if (!element) {
+        return false;
+    }
+
+    const boundKey = `bound${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+    if (element.dataset[boundKey]) {
+        return false;
+    }
+
+    element.dataset[boundKey] = 'true';
+    return true;
+}
+
 // 导出所有工具函数
 export {
     formatUptime,
@@ -508,5 +584,8 @@ export {
     getProviderConfigs,
     getBaseProviderConfigs,
     getProviderStats,
-    apiRequest
+    apiRequest,
+    copyToClipboard,
+    bindOnce,
+    markOnce
 };

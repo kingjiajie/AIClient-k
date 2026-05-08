@@ -13,9 +13,14 @@
     "PROMPT_LOG_MODE": "none",
     "REQUEST_MAX_RETRIES": 3,
     "REQUEST_BASE_DELAY": 1000,
+    "RATE_LIMIT_COOLDOWN_ENABLED": false,
+    "RATE_LIMIT_COOLDOWN_MS": 30000,
+    "RATE_LIMIT_COOLDOWN_JITTER_MS": 5000,
+    "RATE_LIMIT_COOLDOWN_MAX_MS": 300000,
     "CRON_NEAR_MINUTES": 1,
     "CRON_REFRESH_TOKEN": false,
     "PROVIDER_POOLS_FILE_PATH": "configs/provider_pools.json",
+    "CUSTOM_MODELS_FILE_PATH": "configs/custom_models.json",
     "MAX_ERROR_COUNT": 3,
     "GROK_COOKIE_TOKEN": "your-sso-cookie-token",
     "GROK_CF_CLEARANCE": "your-cf-clearance-cookie",
@@ -63,5 +68,6 @@
     "LOG_MAX_FILE_SIZE": 10485760,
     "LOG_MAX_FILES": 10,
     "TLS_SIDECAR_ENABLED": false,
-    "TLS_SIDECAR_PORT": 9090
+    "TLS_SIDECAR_PORT": 9090,
+    "UI_ENABLED": true
 }

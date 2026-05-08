@@ -16,6 +16,7 @@
  * - DeepSeek R1: 内置推理能力
  */
 
+import { atomicWriteFile } from '../../utils/file-lock.js';
 import axios from 'axios';
 import logger from '../../utils/logger.js';
 import * as http from 'http';
@@ -25,7 +26,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { configureAxiosProxy } from '../../utils/proxy-utils.js';
-import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog } from '../../utils/common.js';
+import { isRetryableNetworkError, MODEL_PROVIDER, formatExpiryLog, getRetryAfterMs } from '../../utils/common.js';
 import { getProviderPoolManager } from '../../services/service-manager.js';
 import { getProviderModels } from '../provider-models.js';
 
@@ -134,7 +135,7 @@ async function saveTokenToFile(filePath, tokenStorage, uuid = null) {
             logger.error('[iFlow] WARNING: Attempting to save token file with empty apiKey!');
         }
 
-        await fs.writeFile(absolutePath, JSON.stringify(json, null, 2), 'utf-8');
+        await atomicWriteFile(absolutePath, JSON.stringify(json, null, 2), { encoding: 'utf-8', mode: 0o600 });
 
         logger.info(`[iFlow] Token saved to: ${filePath} (refresh_token: ${json.refresh_token ? json.refresh_token.substring(0, 8) + '...' : 'EMPTY'})`);
     } catch (error) {
@@ -838,12 +839,19 @@ export class IFlowApiService {
                 throw error;
             }
 
-            // Handle 429 (Too Many Requests) with exponential backoff
-            if (status === 429 && retryCount < maxRetries) {
-                const delay = baseDelay * Math.pow(2, retryCount);
-                logger.info(`[iFlow] Received 429 (Too Many Requests). Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return this.callApi(endpoint, body, model, isRetry, retryCount + 1);
+            // Handle 429 (Too Many Requests)
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[iFlow] Received 429 with Retry-After: ${retryAfter}ms. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (retryCount < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[iFlow] Received 429 (Too Many Requests). No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return this.callApi(endpoint, body, model, isRetry, retryCount + 1);
+                }
             }
 
             // Handle other retryable errors (5xx server errors)
@@ -996,13 +1004,20 @@ export class IFlowApiService {
                 throw error;
             }
 
-            // Handle 429 (Too Many Requests) with exponential backoff
-            if (status === 429 && retryCount < maxRetries) {
-                const delay = baseDelay * Math.pow(2, retryCount);
-                logger.info(`[iFlow] Received 429 (Too Many Requests) during stream. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                yield* this.streamApi(endpoint, body, model, isRetry, retryCount + 1);
-                return;
+            // Handle 429 (Too Many Requests)
+            if (status === 429) {
+                const retryAfter = getRetryAfterMs(error);
+                if (retryAfter !== null) {
+                    logger.warn(`[iFlow] Received 429 with Retry-After: ${retryAfter}ms during stream. Throwing to upper layer.`);
+                    throw error;
+                }
+                if (retryCount < maxRetries) {
+                    const delay = baseDelay * Math.pow(2, retryCount);
+                    logger.info(`[iFlow] Received 429 (Too Many Requests) during stream. No Retry-After found. Retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    yield* this.streamApi(endpoint, body, model, isRetry, retryCount + 1);
+                    return;
+                }
             }
 
             // Handle other retryable errors (5xx server errors)

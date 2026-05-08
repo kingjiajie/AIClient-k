@@ -1,5 +1,5 @@
 import { t } from './i18n.js';
-import { showToast, apiRequest } from './utils.js';
+import { showToast, apiRequest, bindOnce } from './utils.js';
 
 // 插件列表状态
 let pluginsList = [];
@@ -9,12 +9,7 @@ let pluginsList = [];
  */
 export function initPluginManager() {
     const refreshBtn = document.getElementById('refreshPluginsBtn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', loadPlugins);
-    }
-    
-    // 初始加载
-    loadPlugins();
+    bindOnce(refreshBtn, 'click', loadPlugins, 'refreshPlugins');
 }
 
 /**

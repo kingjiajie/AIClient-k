@@ -79,6 +79,7 @@ class ApiClient {
     constructor() {
         this.authManager = new AuthManager();
         this.baseURL = window.location.origin;
+        this.inflightGetRequests = new Map();
     }
 
     /**
@@ -176,7 +177,19 @@ class ApiClient {
     async get(endpoint, params = {}) {
         const queryString = new URLSearchParams(params).toString();
         const url = queryString ? `${endpoint}?${queryString}` : endpoint;
-        return this.request(url, { method: 'GET' });
+        const requestKey = `GET ${url}`;
+
+        if (this.inflightGetRequests.has(requestKey)) {
+            return this.inflightGetRequests.get(requestKey);
+        }
+
+        const requestPromise = this.request(url, { method: 'GET' })
+            .finally(() => {
+                this.inflightGetRequests.delete(requestKey);
+            });
+
+        this.inflightGetRequests.set(requestKey, requestPromise);
+        return requestPromise;
     }
 
     /**
