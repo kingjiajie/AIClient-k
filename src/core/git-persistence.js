@@ -7,6 +7,7 @@ class GitPersistence {
     constructor() {
         this.git = null;
         this.enabled = false;
+        this.initialized = false; // 防止重复初始化
         this.isProcessing = false;
         this.lastGC = 0;
         this.config = {
@@ -16,11 +17,11 @@ class GitPersistence {
             branch: process.env.GITSTORE_GIT_BRANCH || 'main',
             localPath: process.env.GITSTORE_LOCAL_PATH || path.resolve(process.cwd(), 'gitstore')
         };
-        
+
         // AIClient-k 需要持久化的核心路径（比 CPA 更多）
         this.persistPaths = [
-            'configs', 
-            'auths', 
+            'configs',
+            'auths',
             'plugins', // 包含插件配置、potluck 密钥、使用统计等
             'static/app/config' // 部分 UI 配置可能存放在此
         ];
@@ -34,6 +35,12 @@ class GitPersistence {
 
     async initialize() {
         if (!this.enabled) return;
+
+        // 防止重复初始化（配置重载时会再次调用）
+        if (this.initialized) {
+            logger.debug('[GitPersistence] Already initialized, skipping re-initialization');
+            return;
+        }
 
         try {
             logger.info(`[GitPersistence] Initializing Git persistence at ${this.config.localPath}`);
@@ -73,6 +80,7 @@ class GitPersistence {
             setInterval(() => this.save('Scheduled auto-sync'), 10 * 60 * 1000);
             this.setupWatcher();
 
+            this.initialized = true; // 标记为已初始化
             logger.info(`[GitPersistence] Initialization complete.`);
         } catch (error) {
             logger.error(`[GitPersistence] Initialization failed: ${error.message}`);
